@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Settings · UniPlan{% endblock %}
+{% block content %}
+{% macro field(key, label, hint='', suffix='') %}
+<label class="line py-3 flex-wrap">
+  <span class="flex-1 min-w-[200px]"><span class="block text-zinc-100">{{ label }}</span>{% if hint %}<span class="block text-xs text-zinc-500 mt-0.5">{{ hint }}</span>{% endif %}</span>
+  <span class="relative w-40"><input name="{{ key }}" value="{{ prefs.get(key, '') }}" class="input input-sm num {% if suffix %}pr-12{% endif %}">{% if suffix %}<span class="absolute right-2.5 top-1.5 text-xs text-zinc-500">{{ suffix }}</span>{% endif %}</span>
+</label>
+{% endmacro %}
+<div class="panel">
+  {% call ui.head('Settings', 'Reminders, study planning and connections') %}
+    <button form="prefs" class="btn-primary">Save changes</button>
+  {% endcall %}
+  {% if request.query_params.get('saved') == 'unhidden' %}{{ ui.notice('Course unhidden. It will reappear in your marks and calendar.') }}
+  {% elif request.query_params.get('saved') %}{{ ui.notice('Saved. Your calendars are updating.') }}{% endif %}
+  <div class="split">
+    <form id="prefs" method="post" action="/settings" class="split-main">
+      {{ ui.strip('Reminders') }}
+      {{ field('alarm_due_minutes', 'Before a deadline', 'Minutes, comma separated. 1440 is a day.', 'min') }}
+      {{ field('alarm_exam_minutes', 'Before an exam', 'Minutes, comma separated.', 'min') }}
+      {{ ui.strip('Study planning') }}
+      {{ field('study_day_start', 'Start studying from', 'Earliest time for a study block.') }}
+      {{ field('study_day_end', 'Stop studying by') }}
+      {{ field('study_block_max_hours', 'Longest block', '', 'hours') }}
+      {{ field('study_daily_max_hours', 'Most study in a day', '', 'hours') }}
+      {{ field('study_horizon_days', 'Plan ahead for', 'Only deadlines within this window get blocks.', 'days') }}
+      {{ field('effort_assignment_hours', 'An assignment takes', 'Default, change it per assessment.', 'hours') }}
+      {{ field('effort_quiz_hours', 'A quiz takes', '', 'hours') }}
+      {{ field('effort_exam_hours', 'Exam preparation', '', 'hours') }}
+      {{ ui.strip('Class changes') }}
+      {{ field('auto_apply_confidence', 'Apply automatically when at least this sure', 'From 0 to 1. Anything less certain goes to Review.') }}
+    </form>
+
+    <aside class="split-side">
+      {{ ui.strip('Calendar on your devices') }}
+      <div class="px-4 py-4 text-[13px] text-zinc-400 space-y-3 border-b border-zinc-800">
+        <p>Add UniPlan as a CalDAV account. iPhone: Settings, Apps, Calendar, Calendar Accounts, Add Account, Other. Mac: Calendar, Settings, Accounts, then the plus button.</p>
+        <div class="rounded-md border border-zinc-800 bg-zinc-950/60 divide-y divide-zinc-800 text-[12.5px]">
+          <div class="flex px-3 py-2"><span class="w-20 text-zinc-500">Server</span><code class="text-zinc-200 break-all">{{ cfg.caldav_url }}</code></div>
+          <div class="flex px-3 py-2"><span class="w-20 text-zinc-500">User</span><code class="text-zinc-200">{{ cfg.caldav_user }}</code></div>
+          <div class="flex px-3 py-2"><span class="w-20 text-zinc-500">Password</span><span class="text-zinc-300">CALDAV_PASSWORD in .env</span></div>
+        </div>
+        <p class="text-xs text-zinc-500">Away from this Mac, use your Tailscale address instead of 127.0.0.1.</p>
+      </div>
+
+      {{ ui.strip('Hidden courses', hidden|length) }}
+      {% for c in hidden %}
+      <div class="line">
+        <div class="flex-1 min-w-0">
+          <div class="font-mono text-[12px] text-zinc-300">{{ c.code }}</div>
+          <div class="text-xs text-zinc-500 truncate">{{ c.name }}</div>
+        </div>
+        <form method="post" action="/courses/{{ c.code }}/hide">
+          <input type="hidden" name="hidden" value="0"><input type="hidden" name="next" value="/settings?saved=unhidden">
+          <button class="btn btn-sm">{{ ui.icon('eye', 'w-3.5 h-3.5') }}Unhide</button>
+        </form>
+      </div>
+      {% else %}
+      <div class="line text-xs text-zinc-500">None. Hide a course from its page to keep it out of your marks, calendar and updates.</div>
+      {% endfor %}
+
+      {{ ui.strip('Connected') }}
+      {% for k, label in [('canvas_token', 'Canvas'), ('ed_token', 'Ed Discussion'), ('timetable_url', 'Timetable'), ('gemini_api_key', 'Gemini'), ('ntfy_topic', 'Notifications')] %}
+      <div class="line min-h-[40px]">
+        <span class="flex-1 text-zinc-200">{{ label }}</span>
+        {% if cfg[k] %}<span class="badge badge-green">{{ ui.icon('check', 'w-3 h-3') }}Set</span>{% else %}<span class="badge badge-amber">Missing</span>{% endif %}
+      </div>
+      {% endfor %}
+      <div class="line min-h-[40px]"><span class="flex-1 text-zinc-200">Email</span><span class="badge {{ 'badge-green' if cfg.email_source != 'none' else 'badge-zinc' }}">{{ {'imap': 'Gmail', 'applemail': 'Apple Mail'}.get(cfg.email_source, 'Off') }}</span></div>
+      <div class="line min-h-[40px]"><span class="flex-1 text-zinc-200">Daily sync</span><span class="text-xs text-zinc-400 num">{{ cfg.nightly_sync_time }}</span></div>
+    </aside>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,19 @@
+[project]
+name = "uniplan-spikes"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "bcrypt>=5.0.0",
+    "caldav>=3.7.0",
+    "google-genai>=2.34.0",
+    "gradescopeapi>=1.8.1",
+    "icalendar>=7.3.0",
+    "keyring>=25.7.0",
+    "msal>=1.39.0",
+    "ollama>=0.6.3",
+    "playwright>=1.64.1",
+    "pydantic>=2.14.2",
+    "python-dotenv>=1.2.4",
+    "radicale>=3.9.0",
+    "requests>=2.34.2",
+]

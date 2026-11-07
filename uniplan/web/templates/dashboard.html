@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Today · UniPlan{% endblock %}
+
+{# ---------- status icon, Linear style ---------- #}
+{% macro status(r) -%}
+{% if r.kind == 'class' %}
+  <span class="grid place-items-center w-4 h-4 {% if r.done %}text-zinc-600{% else %}text-sky-400{% endif %}">{{ ui.icon('clock', 'w-4 h-4') }}</span>
+{% elif r.done %}
+  <span class="grid place-items-center w-4 h-4 rounded-full bg-emerald-500 text-zinc-950">{{ ui.icon('check', 'w-2.5 h-2.5') }}</span>
+{% elif r.kind == 'exam' %}
+  <span class="grid place-items-center w-4 h-4"><span class="w-2.5 h-2.5 rotate-45 rounded-[2px] border-[1.5px] border-brand-400"></span></span>
+{% else %}
+  {% set late = r.when < now %}
+  <span class="w-4 h-4 rounded-full border-[1.5px] {% if late %}border-rose-400 border-dashed{% elif r.when.date() == now.date() %}border-brand-400{% else %}border-zinc-500{% endif %}"></span>
+{% endif %}
+{%- endmacro %}
+
+{% macro chip(code) -%}
+<span class="hidden sm:inline-flex items-center gap-1.5 h-5 px-2 rounded-full border border-zinc-800 text-[11px] text-zinc-400 shrink-0">
+  <span class="w-1.5 h-1.5 rounded-full {{ colours.get(code, 'bg-zinc-500') }}"></span>{{ code }}</span>
+{%- endmacro %}
+
+{% macro row(r, group) -%}
+<a href="{{ r.url or ('/calendar?view=week' if r.kind == 'class' else '/courses/' ~ r.course) }}" {% if r.url %}target="_blank"{% endif %} data-nav
+   class="group/row flex items-center gap-3 h-11 px-4 text-[13px] hover:bg-white/[0.025] focus:outline-none data-[sel=true]:bg-white/[0.06] data-[sel=true]:shadow-[inset_2px_0_0_0_#ffb21f] {% if r.done %}text-zinc-500{% endif %}">
+  {{ status(r) }}
+  <span class="w-14 shrink-0 text-zinc-500 num {% if group != 'today' %}hidden{% endif %}">{{ r.when.strftime('%H:%M') }}</span>
+  <span class="truncate {% if r.done %}line-through decoration-zinc-600{% else %}text-zinc-100{% endif %}">
+    {% if r.kind == 'class' and r.course %}{{ r.course }} {% endif %}{{ r.title }}</span>
+  {% if r.note %}<span class="badge {{ 'badge-red' if r.note == 'Cancelled' else 'badge-amber' }}">{{ r.note }}</span>{% endif %}
+  {% if r.kind == 'exam' %}<span class="badge badge-brand">Exam</span>{% endif %}
+  {% if r.kind != 'class' %}{{ chip(r.course) }}{% endif %}
+  <span class="flex-1"></span>
+  {% if r.location and r.kind == 'class' %}<span class="hidden md:block max-w-[14rem] truncate text-xs text-zinc-500">{{ r.location }}</span>{% endif %}
+  {% if r.weight %}<span class="hidden sm:block w-10 text-right text-xs num {% if r.weight >= 20 %}text-zinc-200{% else %}text-zinc-500{% endif %}">{{ '%.0f'|format(r.weight) if r.weight >= 1 else '%.1f'|format(r.weight) }}%</span>{% endif %}
+  <span class="w-20 text-right text-xs num shrink-0
+    {% if group == 'overdue' %}text-rose-400{% elif group == 'today' and r.kind != 'class' and not r.done %}text-brand-300{% else %}text-zinc-500{% endif %}">
+    {% if r.kind == 'class' %}{{ r.when.strftime('%H:%M') }}–{{ r.end.strftime('%H:%M') }}
+    {% elif group == 'overdue' %}{{ (now.date() - r.when.date()).days }}d late
+    {% elif group == 'today' %}Due {{ r.when.strftime('%H:%M') }}
+    {% elif group == 'week' %}{{ r.when.strftime('%A') }}
+    {% else %}{{ r.when.strftime('%a %-d %b') }}{% endif %}
+  </span>
+</a>
+{%- endmacro %}
+
+{% block content %}
+{% set labels = {'overdue': 'Overdue', 'today': 'Today', 'week': 'Later this week', 'next': 'Next week', 'later': 'Coming up'} %}
+{% set head = 'strip' %}
+{% set ns = namespace(any=False) %}
+{% for key in ['overdue', 'today', 'week', 'next', 'later'] %}{% if groups[key] %}{% set ns.any = True %}{% endif %}{% endfor %}
+
+<div class="panel">
+  {% call ui.head('Today', now.strftime('%A %-d %B')) %}
+    <div class="hidden sm:flex items-center gap-4 text-xs text-zinc-500 num">
+      <span class="inline-flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-brand-400"></span>{{ open_due|length }} open this week</span>
+      <span class="inline-flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>{{ classes_today|length }} class{{ '' if classes_today|length == 1 else 'es' }} today</span>
+      {% if run %}<span class="text-zinc-600">Synced {{ run.started_at|loc('%H:%M') }}</span>{% endif %}
+    </div>
+  {% endcall %}
+
+  <div class="split">
+
+    {# ===== left: the list ===== #}
+    <div class="split-main">
+      {% if not run %}{{ ui.notice('No sync yet. Press Sync to pull in your courses.') }}{% endif %}
+      {% if digest.get('needs_action') %}{{ ui.notice(digest.needs_action.keys()|join(', ')|capitalize ~ (' needs' if digest.needs_action|length == 1 else ' need') ~ ' attention', 'red', '/health') }}{% endif %}
+      {% if open_reviews %}{{ ui.notice(open_reviews ~ (' thing' if open_reviews == 1 else ' things') ~ ' to confirm', 'brand', '/review') }}{% endif %}
+
+      {% if ns.any %}
+        {% for key in ['overdue', 'today', 'week', 'next', 'later'] %}{% set rows = groups[key] %}
+        {% if rows %}
+        <details {% if key != 'later' %}open{% endif %} class="group/g">
+          <summary class="{{ head }} select-none hover:bg-zinc-800/40">
+            <span class="text-zinc-500"><span class="group-open/g:hidden">{{ ui.icon('chevron-right', 'w-3.5 h-3.5') }}</span><span class="hidden group-open/g:inline">{{ ui.icon('chevron-down', 'w-3.5 h-3.5') }}</span></span>
+            <span class="font-medium {% if key == 'overdue' %}text-rose-300{% else %}text-zinc-200{% endif %}">{{ labels[key] }}</span>
+            <span class="text-zinc-500 num">{{ rows|length }}</span>
+            {% set w = rows|map(attribute='weight')|sum %}
+            {% if w %}<span class="ml-auto text-zinc-500 num">{{ '%.0f'|format(w) }}% of grades</span>{% endif %}
+          </summary>
+          <div class="divide-y divide-zinc-800/50 border-b border-zinc-800">
+            {% for r in rows %}{{ row(r, key) }}{% endfor %}
+          </div>
+        </details>
+        {% endif %}
+        {% endfor %}
+        <div class="flex-1"></div>
+        <p class="hidden sm:flex items-center gap-1.5 px-4 py-3 text-[11px] text-zinc-600"><kbd>J</kbd><kbd>K</kbd> to move <kbd>↵</kbd> to open</p>
+      {% else %}
+        <div class="flex-1 grid place-items-center">{{ ui.empty("You're all caught up. Nothing due in the next four weeks.", 'check') }}</div>
+      {% endif %}
+    </div>
+
+    {# ===== right: side panel, same frame, divided by one border ===== #}
+    <aside class="split-side">
+      {% if unread %}
+      <section id="updates">
+        <div class="{{ head }}">
+          <span class="font-medium text-zinc-200">Updates</span>
+          <span id="updates-count" class="text-zinc-500 num">{{ unread|length }}</span>
+        </div>
+        <div class="divide-y divide-zinc-800/50 border-b border-zinc-800">
+          {% for i in unread %}
+          <div data-update class="group/u relative px-4 py-3 hover:bg-white/[0.02]">
+            <a href="{{ i.url }}" target="_blank" class="block pr-5">
+              <div class="flex items-center gap-1.5 text-[11px] text-zinc-500 mb-1">
+                <span class="w-1.5 h-1.5 rounded-full {% if i.importance >= 3 %}bg-rose-400{% else %}{{ colours.get(i.course_code, 'bg-zinc-500') }}{% endif %}"></span>
+                <span class="font-mono">{{ i.course_code or i.source }}</span><span>·</span><span>{{ i.posted_at|loc('%-d %b') }}</span>
+              </div>
+              <div class="text-[13px] text-zinc-100 leading-snug line-clamp-2">{{ i.title }}</div>
+              {% if i.summary %}<p class="text-xs text-zinc-500 leading-relaxed mt-1 line-clamp-2">{{ i.summary }}</p>{% endif %}
+            </a>
+            <button type="button" data-url="/items/{{ i.id }}/dismiss" onclick="dismissUpdate(this)"
+                    class="absolute top-2.5 right-2.5 grid place-items-center w-6 h-6 rounded text-zinc-600 opacity-0 group-hover/u:opacity-100 focus:opacity-100 hover:text-zinc-200 hover:bg-zinc-800" title="Dismiss" aria-label="Dismiss update">{{ ui.icon('x', 'w-3.5 h-3.5') }}</button>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      <div class="{{ head }}">
+        <span class="font-medium text-zinc-200">Marks</span>
+        <a href="/courses" class="ml-auto text-zinc-500 hover:text-zinc-200">All</a>
+      </div>
+      <div class="divide-y divide-zinc-800/50">
+        {% for c in courses %}{% set m = marks[c.code] %}{% set e, l, r = m.bar %}
+        <a href="/courses/{{ c.code }}" class="block px-4 py-3 hover:bg-white/[0.02]">
+          <div class="flex items-center gap-2 text-[13px]">
+            <span class="w-1.5 h-1.5 rounded-full {{ colours.get(c.code, 'bg-zinc-500') }}"></span>
+            <span class="font-mono text-[12px] text-zinc-300">{{ c.code }}</span>
+            <span class="ml-auto text-zinc-100 num">{% if m.current_avg is not none %}{{ '%.1f'|format(m.current_avg) }}%{% else %}<span class="text-zinc-600">–</span>{% endif %}</span>
+            <span class="w-7 text-right text-[11px] text-zinc-500">{% if m.current_avg is not none %}{{ band(m.current_avg) }}{% endif %}</span>
+          </div>
+          <div class="mt-2 flex h-1 rounded-full overflow-hidden bg-zinc-800">
+            <div class="{{ colours.get(c.code, 'bg-zinc-500') }}" style="width: {{ e }}%"></div>
+            <div class="bg-zinc-600/60" style="width: {{ l }}%"></div>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+  function dismissUpdate(btn) {
+    fetch(btn.dataset.url, { method: 'POST', credentials: 'same-origin' });
+    const item = btn.closest('[data-update]');
+    item.remove();
+    const left = document.querySelectorAll('#updates [data-update]').length;
+    if (left === 0) document.getElementById('updates')?.remove();
+    else document.getElementById('updates-count').textContent = left;
+  }
+</script>
+<script>
+  // Linear-style keyboard navigation: j / k (or arrows) to move, Enter to open
+  (function () {
+    const rows = () => [...document.querySelectorAll('[data-nav]')].filter(r => r.offsetParent !== null);
+    let i = -1;
+    function sel(n) {
+      const list = rows(); if (!list.length) return;
+      i = Math.max(0, Math.min(n, list.length - 1));
+      list.forEach((r, k) => r.dataset.sel = k === i);
+      list[i].scrollIntoView({ block: 'nearest' });
+    }
+    document.addEventListener('keydown', e => {
+      if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (document.getElementById('palette')?.open) return;
+      if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); sel(i + 1); }
+      else if (e.key === 'k' || e.key === 'ArrowUp') { e.preventDefault(); sel(i - 1); }
+      else if (e.key === 'Enter' && i >= 0) { const r = rows()[i]; if (r) r.click(); }
+      else if (e.key === 'Escape') { i = -1; rows().forEach(r => r.dataset.sel = false); }
+    });
+  })();
+</script>
+{% endblock %}

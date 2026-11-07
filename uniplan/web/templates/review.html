@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Review · UniPlan{% endblock %}
+{% block content %}
+{% set kinds = {'conflict': ('Calendar edit', 'calendar'), 'class_change': ('Class change', 'map-pin'), 'deadline_change': ('Due date', 'clock'), 'weights': ('Weightings', 'layers')} %}
+<div class="panel">
+  {% call ui.head('Review', items|length ~ ' to confirm' if items else "You're all clear") %}{% endcall %}
+  {% if items %}{{ ui.strip('Needs a decision', items|length) }}{% endif %}
+  {% for r in items %}{% set d = r.data() %}{% set k = kinds.get(r.kind, (r.kind, 'inbox')) %}
+  <div class="flex items-start gap-4 px-4 sm:px-5 py-4 border-b border-zinc-800/60">
+    <span class="grid place-items-center w-8 h-8 rounded-lg bg-zinc-800/60 border border-zinc-800 shrink-0">{{ ui.icon(k[1], 'w-4 h-4 text-zinc-300') }}</span>
+    <div class="flex-1 min-w-0">
+      <div class="text-[11px] text-zinc-500 mb-0.5">{{ k[0] }}</div>
+      <div class="text-[14px] text-zinc-100">{{ r.title }}</div>
+      {% if r.detail %}<p class="text-[13px] text-zinc-400 mt-1 leading-relaxed">{{ r.detail }}</p>{% endif %}
+      <form method="post" action="/review/{{ r.id }}" class="mt-3 flex flex-wrap gap-2 items-center">
+        {% if r.kind == 'conflict' %}
+          <button name="action" value="source" class="btn-primary">Use the new version</button>
+          <button name="action" value="mine" class="btn">Keep my edit</button>
+          <details class="w-full mt-1"><summary class="text-xs text-zinc-500 hover:text-zinc-300 inline-flex items-center gap-1">{{ ui.icon('chevron-down', 'w-3 h-3') }}Compare</summary>
+            <div class="grid md:grid-cols-2 gap-2 mt-2 text-[11px]">
+              <pre class="whitespace-pre-wrap rounded-md bg-zinc-950/60 border border-zinc-800 p-3 text-zinc-400 font-mono"><span class="text-zinc-200">Yours</span>
+{{ d.server_ics or '(deleted on your device)' }}</pre>
+              <pre class="whitespace-pre-wrap rounded-md bg-zinc-950/60 border border-zinc-800 p-3 text-zinc-400 font-mono"><span class="text-zinc-200">New</span>
+{{ d.desired_ics }}</pre>
+            </div></details>
+        {% elif r.kind == 'class_change' %}
+          {% if d.candidates %}
+          <div class="w-full space-y-1 mb-1">
+            {% for c in d.candidates %}
+            <label class="flex items-center gap-2.5 rounded-md px-3 py-2 border border-zinc-800 text-[13px] text-zinc-300 hover:bg-white/[0.02] cursor-pointer">
+              <input type="radio" name="key" value="{{ c.key }}" {% if loop.first %}checked{% endif %}>{{ c.label }}</label>
+            {% endfor %}
+          </div>
+          <button name="action" value="apply" class="btn-primary">Apply to this class</button>
+          {% endif %}
+          <button name="action" value="reject" class="btn">Ignore</button>
+        {% elif r.kind == 'deadline_change' %}
+          <button name="action" value="accept" class="btn-primary">Update the due date</button>
+          <button name="action" value="reject" class="btn">Ignore</button>
+        {% elif r.kind == 'weights' %}
+          <a href="/courses/{{ d.course }}?tab=weightings" class="btn-primary">Check weightings</a>
+          <button name="action" value="dismiss" class="btn">Dismiss</button>
+        {% else %}
+          <button name="action" value="dismiss" class="btn">Dismiss</button>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <div class="flex-1 grid place-items-center">{{ ui.empty("Nothing needs a decision.", 'check') }}</div>
+  {% endfor %}
+  {% if items %}<div class="flex-1"></div>{% endif %}
+  {% if done %}
+  <details class="border-t border-zinc-800">
+    <summary class="strip border-b-0 text-zinc-500 font-normal hover:text-zinc-300">{{ ui.icon('chevron-down', 'w-3.5 h-3.5') }}Recently resolved<span class="strip-count">{{ done|length }}</span></summary>
+    {% for r in done %}<div class="line"><span class="flex-1 truncate text-zinc-400">{{ r.title }}</span><span class="text-xs text-zinc-600">{{ r.resolution }}</span></div>{% endfor %}
+  </details>
+  {% endif %}
+</div>
+{% endblock %}

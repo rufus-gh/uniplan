@@ -1,0 +1,41 @@
+[project]
+name = "uniplan"
+version = "0.1.0"
+description = "Personal uni life planner: Canvas/Gradescope/Ed/timetable -> editable CalDAV calendar, marks, digest"
+requires-python = ">=3.13"
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "jinja2",
+  "python-multipart",
+  "sqlmodel",
+  "apscheduler>=3.10,<4",
+  "requests",
+  "icalendar",
+  "gradescopeapi",
+  "google-genai",
+  "ollama",
+  "caldav",
+  "radicale",
+  "bcrypt",
+  "keyring",
+  "python-dotenv",
+  "playwright",
+  "beautifulsoup4",
+  "pydantic",
+  "python-dateutil",
+  "pywebpush>=2.5.0",
+]
+
+[project.scripts]
+uniplan = "uniplan.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest", "httpx"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

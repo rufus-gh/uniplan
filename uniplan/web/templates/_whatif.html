@@ -1,0 +1,12 @@
+{% if projected is not none %}
+<div class="flex items-baseline gap-3">
+  <span class="text-5xl font-semibold tracking-tight text-white num">{{ '%.1f'|format(projected) }}</span>
+  <span class="text-xl text-zinc-500">%</span>
+  {% set b = band(projected) %}
+  {% set tone = {'HD': 'brand', 'D': 'sky', 'CR': 'green', 'P': 'amber', 'N': 'red'}.get(b, 'zinc') %}
+  <span class="badge badge-{{ tone }}">{{ b }}</span>
+</div>
+<p class="mt-4 text-sm text-zinc-400">Projected final{% if m.graded_weight != base.graded_weight %}, using your specific results and {{ '%g'|format(uniform) }}% for the rest{% else %} if you average {{ '%g'|format(uniform) }}% on what's left{% endif %}.</p>
+{% else %}
+<p class="text-sm text-zinc-500">Add the weightings first.</p>
+{% endif %}

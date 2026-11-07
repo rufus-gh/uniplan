@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Health · UniPlan{% endblock %}
+{% block content %}
+{% if syncing %}<meta http-equiv="refresh" content="5">{% endif %}
+{% set tone = {'ok': 'bg-emerald-400', 'disabled': 'bg-zinc-600', 'needs_action': 'bg-orange-400', 'partial': 'bg-orange-400'} %}
+<div class="panel">
+  {% call ui.head('Health', ('Next automatic sync ' ~ next_run.strftime('%A at %H:%M')) if next_run else "Automatic sync isn't scheduled") %}
+    <button id="push-enable" type="button" data-key="{{ push_key }}" class="btn">{{ ui.icon('bell', 'w-3.5 h-3.5') }}Turn on notifications</button>
+    <span id="push-status" class="text-xs" aria-live="polite"></span>
+    <script src="/static/push.js?v={{ css_version }}" defer></script>
+    <button hx-post="/health/test-push" hx-swap="outerHTML" class="btn">{{ ui.icon('bell', 'w-3.5 h-3.5') }}Test notification</button>
+  {% endcall %}
+  {% if syncing %}{{ ui.notice('Syncing now. This page refreshes every few seconds.') }}{% endif %}
+  <div class="split">
+    <div class="split-main">
+      {{ ui.strip('Connections', sources|length if sources else None) }}
+      {% for name, v in sources.items() %}
+      <div class="line items-start py-3">
+        <span class="dot mt-1.5 {{ tone.get(v.status, 'bg-rose-400') }}"></span>
+        <div class="flex-1 min-w-0">
+          <div class="text-zinc-100 capitalize">{{ name }}</div>
+          {% if v.error %}<div class="text-xs text-zinc-500 mt-0.5 break-words">{{ v.error }}</div>
+          {% elif v.meta %}<div class="text-xs text-zinc-500 mt-0.5">{% for k, x in v.meta.items() if x is not mapping %}{{ x }} {{ k.replace('_', ' ') }}{% if not loop.last %} · {% endif %}{% endfor %}</div>{% endif %}
+        </div>
+        <span class="text-xs text-zinc-500">{{ {'ok': 'OK', 'disabled': 'Off', 'needs_action': 'Needs you', 'partial': 'Partly'}.get(v.status, 'Error') }}</span>
+      </div>
+      {% else %}
+      {{ ui.empty('No sync has run yet.') }}
+      {% endfor %}
+
+      {{ ui.strip('Recent syncs', runs|length) }}
+      {% for r in runs %}
+      <details class="border-b border-zinc-800/50">
+        <summary class="line border-b-0 line-link"><span class="dot {{ tone.get(r.status, 'bg-rose-400') }}"></span><span class="text-zinc-300">{{ r.started_at|loc('%a %-d %b %H:%M') }}</span><span class="text-xs text-zinc-500">{{ r.trigger }}</span>
+          <span class="ml-auto text-xs text-zinc-500 num">{% if r.finished_at %}{{ ((r.finished_at - r.started_at).total_seconds())|round|int }}s{% else %}{{ r.status }}{% endif %}</span></summary>
+        <pre class="px-4 pb-3 text-[11px] whitespace-pre-wrap text-zinc-500 max-h-80 overflow-auto font-mono">{{ r.log }}</pre>
+      </details>
+      {% endfor %}
+    </div>
+    <aside class="split-side">
+      {{ ui.strip('Setup') }}
+      {% for name, ok, detail in checks %}
+      <div class="line items-start py-2.5">
+        <span class="grid place-items-center w-5 h-5 mt-px rounded-full shrink-0 {% if ok %}bg-emerald-500/15 text-emerald-300{% else %}bg-orange-500/15 text-orange-300{% endif %}">{{ ui.icon('check' if ok else 'alert', 'w-3 h-3') }}</span>
+        <div class="min-w-0"><div class="text-zinc-100">{{ name }}</div><div class="text-xs text-zinc-500 break-words">{{ detail }}</div></div>
+      </div>
+      {% endfor %}
+      {{ ui.strip('AI calls', 'last 24h') }}
+      {% for k, v in llm_stats.items() %}
+      <div class="line text-xs"><span class="flex-1 font-mono text-zinc-400 truncate">{{ k }}</span><span class="num text-zinc-300">{{ v[0] }} ok · {{ v[1] }} failed</span></div>
+      {% else %}<div class="line text-xs text-zinc-500">None.</div>{% endfor %}
+      {{ ui.strip('Stored') }}
+      {% for k, v in counts.items() %}<div class="line text-xs min-h-[36px]"><span class="flex-1 text-zinc-400">{{ k|capitalize }}</span><span class="num text-zinc-300">{{ v }}</span></div>{% endfor %}
+    </aside>
+  </div>
+</div>
+{% endblock %}

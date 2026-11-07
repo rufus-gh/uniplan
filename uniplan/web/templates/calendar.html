@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Calendar · UniPlan{% endblock %}
+{% set kinds = {
+  'classes': {'label': 'Classes', 'dot': 'bg-sky-400', 'block': 'bg-sky-400/[0.09] border-sky-400 text-sky-100', 'time': 'text-zinc-500'},
+  'due': {'label': 'Deadlines', 'dot': 'bg-rose-400', 'block': 'bg-rose-400/[0.09] border-rose-400 text-rose-100', 'time': 'text-rose-300/90'},
+  'exams': {'label': 'Exams', 'dot': 'bg-brand-400', 'block': 'bg-brand-400/[0.10] border-brand-400 text-brand-100', 'time': 'text-brand-300/90'},
+  'study': {'label': 'Study', 'dot': 'bg-emerald-400', 'block': 'bg-emerald-400/[0.08] border-emerald-400 text-emerald-100', 'time': 'text-zinc-500'},
+} %}
+
+{% macro when(e) -%}
+{% if e.calendar == 'due' %}Due {{ e.end.strftime('%H:%M') }}{% else %}{{ e.start.strftime('%H:%M') }}{% if e.calendar != 'study' %} – {{ e.end.strftime('%H:%M') }}{% endif %}{% endif %}
+{%- endmacro %}
+
+{% block content %}
+<div class="panel h-[calc(100vh-15rem)] min-h-[560px]">
+  {% call ui.head('Calendar', cal_title) %}
+    <div class="inline-flex items-center rounded-md border border-zinc-800 bg-zinc-900">
+      <a href="?view={{ view }}&d={{ prev_d.isoformat() }}" class="h-8 w-8 grid place-items-center text-zinc-400 hover:text-white" aria-label="Previous">{{ ui.icon('chevron-left', 'w-4 h-4') }}</a>
+      <a href="?view={{ view }}" class="h-8 px-2.5 grid place-items-center text-[13px] text-zinc-300 hover:text-white border-x border-zinc-800 {% if first <= today <= last %}text-zinc-500{% endif %}">Today</a>
+      <a href="?view={{ view }}&d={{ next_d.isoformat() }}" class="h-8 w-8 grid place-items-center text-zinc-400 hover:text-white" aria-label="Next">{{ ui.icon('chevron-right', 'w-4 h-4') }}</a>
+    </div>
+    <div class="seg">
+      <a href="?view=month&d={{ anchor.isoformat() }}" class="{% if view == 'month' %}on{% endif %}">Month</a>
+      <a href="?view=week&d={{ anchor.isoformat() }}" class="{% if view == 'week' %}on{% endif %}">Week</a>
+    </div>
+    <details data-menu class="relative">
+      <summary class="btn">{{ ui.icon('layers', 'w-3.5 h-3.5') }}<span class="hidden sm:inline">Show</span></summary>
+      <div class="menu w-52 space-y-1">
+        {% for key, k in kinds.items() %}
+        <label class="flex items-center gap-2.5 rounded px-2 py-1.5 hover:bg-zinc-800/60 cursor-pointer text-[13px] text-zinc-200">
+          <input type="checkbox" data-filter="{{ key }}" checked><span class="dot {{ k.dot }}"></span>{{ k.label }}</label>
+        {% endfor %}
+      </div>
+    </details>
+  {% endcall %}
+
+{% if view == 'month' %}
+  {# ------------------------------------------------------------ month #}
+  <div class="grid grid-cols-7 border-b border-zinc-800 bg-zinc-950/40">
+    {% for name in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
+    <div class="py-2.5 text-center text-xs font-medium text-zinc-500">{{ name }}</div>
+    {% endfor %}
+  </div>
+  <div class="grid grid-cols-7 flex-1 min-h-0" style="grid-template-rows: repeat({{ (days|length) // 7 }}, minmax(0, 1fr))">
+    {% for d in days %}{% set evs = by_day.get(d, []) %}{% set out = d.month != month %}
+    <div class="min-h-0 overflow-hidden border-zinc-800 {% if loop.index % 7 != 0 %}border-r{% endif %} {% if not loop.last and loop.revindex > 7 %}border-b{% endif %} p-1 sm:p-1.5 {% if out %}bg-zinc-950/30{% endif %}">
+      <div class="flex items-center h-5 mb-0.5">
+        {% if d == today %}
+        <span class="grid place-items-center w-5 h-5 rounded-full bg-brand-400 text-zinc-950 text-[11px] font-semibold num">{{ d.day }}</span>
+        {% else %}
+        <span class="px-1 text-xs num {% if out %}text-zinc-600{% else %}text-zinc-300{% endif %}">{{ d.day }}</span>
+        {% endif %}
+      </div>
+      <div data-day class="space-y-px">
+        {% for e in evs %}
+        <a href="?view=week&d={{ d.isoformat() }}" data-cal="{{ e.calendar }}" class="flex items-center gap-1.5 h-[18px] rounded px-1 min-w-0 text-[11.5px] leading-none hover:bg-zinc-800/70"
+           title="{{ when(e) }} · {{ e.course }} {{ e.title }}{% if e.location %} · {{ e.location }}{% endif %}">
+          <span class="dot {{ kinds[e.calendar].dot }}"></span>
+          <span class="hidden sm:inline truncate {% if e.title.startswith('Cancelled') %}line-through text-zinc-500{% elif e.calendar == 'due' %}text-rose-200{% elif e.calendar == 'exams' %}text-brand-200{% else %}text-zinc-200{% endif %}">{{ e.course }} {{ (e.title|short).replace('Study: ', '') }}</span>
+        </a>
+        {% endfor %}
+        <a data-more href="?view=week&d={{ d.isoformat() }}" class="hidden h-[18px] px-1 text-[11px] leading-[18px] text-zinc-500 hover:text-zinc-200"></a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+{% else %}
+  {# ------------------------------------------------------------ week #}
+  {% set h0, h1 = hours %}{% set ph = 52 %}
+  <div id="week-scroll" class="flex-1 min-h-0 overflow-auto">
+    <div class="min-w-[760px]">
+      <div class="sticky top-0 z-30 grid grid-cols-[56px_repeat(7,1fr)] border-b border-zinc-800 bg-surface-raised">
+        <div></div>
+        {% for d in days %}
+        <div class="py-2.5 text-center border-l border-zinc-800">
+          <div class="text-xs text-zinc-500">{{ d.strftime('%a') }}</div>
+          {% if d == today %}<span class="inline-grid place-items-center w-7 h-7 mt-0.5 rounded-full bg-brand-400 text-zinc-950 text-sm font-semibold num">{{ d.day }}</span>
+          {% else %}<div class="text-sm text-zinc-200 mt-0.5 h-7 leading-7 num">{{ d.day }}</div>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <div class="grid grid-cols-[56px_repeat(7,1fr)] relative" style="height: {{ (h1 - h0) * ph }}px">
+        <div class="relative">
+          {% for h in range(h0, h1) %}
+          <div class="absolute right-2 text-[11px] text-zinc-600 num -translate-y-1/2" style="top: {{ (h - h0) * ph }}px">{% if not loop.first %}{{ '%02d'|format(h) }}:00{% endif %}</div>
+          {% endfor %}
+        </div>
+        {% for d in days %}
+        <div class="relative border-l border-zinc-800 {% if d == today %}bg-brand-400/[0.025]{% endif %}">
+          {% for h in range(h0 + 1, h1) %}<div class="absolute inset-x-0 border-t border-zinc-800/60" style="top: {{ (h - h0) * ph }}px"></div>{% endfor %}
+          {% for e in by_day.get(d, []) %}
+            {% set top = ((e.start.hour - h0) + e.start.minute / 60) * ph %}
+            {% set mins = ((e.end - e.start).total_seconds() / 60) %}
+            {% set height = [mins / 60 * ph, 22]|max %}
+            {% set w = 100 / e.lanes %}
+            <div data-cal="{{ e.calendar }}" class="absolute rounded-md border-l-2 px-1.5 py-1 overflow-hidden {{ kinds[e.calendar].block }} hover:z-10 hover:brightness-125"
+                 style="top: {{ top + 1 }}px; height: {{ height - 2 }}px; left: calc({{ e.lane * w }}% + 2px); width: calc({{ w }}% - 4px)"
+                 title="{{ e.course }} {{ e.title }} · {{ when(e) }}{% if e.location %} · {{ e.location }}{% endif %}">
+              <div class="text-[11.5px] leading-tight font-medium truncate {% if e.title.startswith('Cancelled') %}line-through opacity-60{% endif %}">{% if e.course %}{{ e.course }} {% endif %}{{ e.title }}</div>
+              {% if height > 34 %}<div class="text-[10.5px] opacity-70 truncate num">{{ when(e) }}{% if e.location and height > 50 %} · {{ e.location }}{% endif %}</div>{% endif %}
+            </div>
+          {% endfor %}
+          {% if d == today %}
+          <div id="now-line" class="absolute inset-x-0 z-20 pointer-events-none hidden" data-h0="{{ h0 }}" data-ph="{{ ph }}">
+            <div class="h-px bg-brand-400"></div><div class="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-brand-400"></div>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+  <div class="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 sm:px-5 py-3 border-t border-zinc-800 text-xs text-zinc-500">
+  {% for key, k in kinds.items() %}<span class="inline-flex items-center gap-1.5"><span class="dot {{ k.dot }}"></span>{{ k.label }}</span>{% endfor %}
+  <span class="inline-flex items-center gap-1.5 ml-auto">{{ ui.icon('pen', 'w-3 h-3') }}Edited on your device</span>
+</div>
+</div>
+
+
+
+<script>
+  (function () {
+    const KEY = 'uniplan-cal-hidden';
+    let hidden = [];
+    try { hidden = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) {}
+    function apply() {
+      document.querySelectorAll('[data-cal]').forEach(el => el.classList.toggle('hidden', hidden.includes(el.dataset.cal)));
+      document.querySelectorAll('[data-filter]').forEach(cb => cb.checked = !hidden.includes(cb.dataset.filter));
+      fit();
+    }
+    // month view: show as many one-line events as fit each day, then "+N more"
+    function fit() {
+      document.querySelectorAll('[data-day]').forEach(day => {
+        const more = day.querySelector('[data-more]'), row = 19;
+        const evs = [...day.querySelectorAll('[data-cal]')].filter(e => !hidden.includes(e.dataset.cal));
+        evs.forEach(e => e.classList.remove('hidden'));
+        more.classList.add('hidden');
+        const room = Math.floor((day.parentElement.getBoundingClientRect().bottom - day.getBoundingClientRect().top - 4 + 1) / row);
+        if (evs.length > room) {
+          const show = Math.max(0, room - 1);
+          evs.slice(show).forEach(e => e.classList.add('hidden'));
+          more.textContent = '+' + (evs.length - show) + ' more';
+          more.classList.remove('hidden');
+        }
+      });
+    }
+    window.addEventListener('resize', fit);
+    document.querySelectorAll('[data-filter]').forEach(cb => cb.addEventListener('change', () => {
+      hidden = cb.checked ? hidden.filter(k => k !== cb.dataset.filter) : [...hidden, cb.dataset.filter];
+      try { localStorage.setItem(KEY, JSON.stringify(hidden)); } catch (e) {}
+      apply();
+    }));
+    apply();
+    const line = document.getElementById('now-line');
+    if (line) {
+      const place = () => {
+        const n = new Date(), h0 = +line.dataset.h0, ph = +line.dataset.ph;
+        const top = (n.getHours() - h0 + n.getMinutes() / 60) * ph;
+        if (top >= 0 && top <= line.parentElement.offsetHeight) { line.style.top = top + 'px'; line.classList.remove('hidden'); }
+        return top;
+      };
+      const top = place();
+      setInterval(place, 60000);
+      const sc = document.getElementById('week-scroll');
+      if (sc && top > 0) sc.scrollTop = Math.max(0, top - sc.clientHeight / 3);
+    }
+  })();
+</script>
+{% endblock %}

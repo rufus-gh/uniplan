@@ -1,0 +1,19 @@
+<section class="border-b border-zinc-800">
+  <div class="strip"><span class="truncate">{{ q }}</span>{% if model %}<span class="strip-right text-[11px]">{{ model.split(':')[-1] }}</span>{% endif %}</div>
+  <div class="px-4 sm:px-5 py-4">
+    {% if error %}
+    <p class="text-sm text-rose-300">Couldn't answer right now: {{ error }}</p>
+    {% else %}
+    <div class="text-[14px] leading-relaxed text-zinc-300 -my-2">{{ answer_html(answer, sources|length) }}</div>
+    {% if sources %}
+    <div class="mt-4 pt-3 border-t border-zinc-800/60 space-y-1">
+      {% for i in sources %}
+      <a id="src-{{ loop.index }}" href="{{ i.url }}" target="_blank" class="flex items-center gap-2 text-xs text-zinc-500 hover:text-zinc-200">
+        <span class="num text-zinc-600 w-4">{{ loop.index }}</span><span class="font-mono">{{ i.course_code or '' }}</span><span class="truncate">{{ i.title }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+</section>

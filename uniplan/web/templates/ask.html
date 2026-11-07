@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Ask · UniPlan{% endblock %}
+{% block content %}
+<div class="panel">
+  {% call ui.head('Ask', 'Answers from your announcements, Ed threads, course pages and deadlines') %}{% endcall %}
+  <div class="border-b border-zinc-800 px-4 sm:px-5 py-5">
+    <form id="ask-form" hx-post="/ask" hx-target="#answers" hx-swap="afterbegin" hx-indicator="#ask-spin" hx-on::after-request="this.reset()"
+          class="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 pl-3 pr-1.5 h-11 focus-within:border-brand-400/60 focus-within:ring-2 focus-within:ring-brand-400/15">
+      {{ ui.icon('search', 'w-4 h-4 text-zinc-500') }}
+      <input name="q" required autofocus autocomplete="off" placeholder="Ask anything about your courses" class="flex-1 bg-transparent text-[14px] outline-none placeholder:text-zinc-600">
+      <svg id="ask-spin" class="htmx-indicator w-4 h-4 animate-spin text-zinc-400" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity=".25" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+      <button class="btn-primary">Ask</button>
+    </form>
+    <div class="flex flex-wrap gap-2 mt-3">
+      {% for q in ['What do I have due this week?', 'When and where is my next exam?', 'Has anything about classes changed?'] %}
+      <button type="button" class="btn btn-sm font-normal text-zinc-400" onclick="const f=document.getElementById('ask-form'); f.q.value=this.textContent; htmx.trigger(f, 'submit')">{{ q }}</button>
+      {% endfor %}
+    </div>
+  </div>
+  <div id="answers"></div>
+  <div class="flex-1 grid place-items-center [#answers:not(:empty)~&]:hidden">{{ ui.empty('Ask a question and the answer appears here, with its sources.', 'sparkle') }}</div>
+</div>
+{% endblock %}

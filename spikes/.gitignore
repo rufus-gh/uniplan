@@ -1,0 +1,4 @@
+radicale_data/
+results/
+.venv/
+__pycache__/

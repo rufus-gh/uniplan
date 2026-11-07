@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Workload · UniPlan{% endblock %}
+
+{% macro week_label(w, i) -%}
+{% if i == 0 %}This week{% elif i == 1 %}Next week{% else %}Week of {{ w.start.strftime('%-d %b') }}{% endif %}
+{%- endmacro %}
+{% set level_tone = ['zinc', 'zinc', 'sky', 'amber', 'red'] %}
+
+{% block content %}
+<div class="panel">
+  {% call ui.head('Workload', 'Next ' ~ weeks|length ~ ' weeks') %}{% endcall %}
+
+{# ---------------------------------------------------------------- summary #}
+{% set now_w = weeks[0] %}
+<div class="grid grid-cols-2 lg:grid-cols-4 border-b border-zinc-800 [&>*]:border-zinc-800 [&>*:nth-child(odd)]:border-r lg:[&>*]:border-r lg:[&>*:last-child]:border-r-0 [&>*:nth-child(-n+2)]:border-b lg:[&>*:nth-child(-n+2)]:border-b-0">
+  <div class="px-4 sm:px-5 py-4">
+    <div class="label">This week</div>
+    <div class="mt-2 flex items-center gap-2">
+      <span class="text-xl font-semibold text-white">{{ now_w.level_name }}</span>
+      {% if now_w.level >= 3 %}<span class="dot bg-rose-400"></span>{% endif %}
+    </div>
+    <div class="text-xs text-zinc-500 mt-1 num">{% if now_w.open_entries %}{{ now_w.open_entries|length }} due{% if now_w.weight %}, {{ '%.0f'|format(now_w.weight) }}% of grades{% endif %}{% else %}Nothing left to hand in{% endif %}</div>
+  </div>
+  <div class="px-4 sm:px-5 py-4">
+    <div class="label">Next 4 weeks</div>
+    <div class="mt-2 text-xl font-semibold text-white num">{{ soon|length }} <span class="text-sm font-normal text-zinc-500">due</span></div>
+    <div class="text-xs text-zinc-500 mt-1 num">{% if soon_weight %}{{ '%.0f'|format(soon_weight) }}% of your grades{% else %}No weighted work{% endif %}</div>
+  </div>
+  <div class="px-4 sm:px-5 py-4">
+    <div class="label">Busiest week</div>
+    {% if busiest %}{% set bi = weeks.index(busiest) %}
+    <div class="mt-2 text-xl font-semibold text-white">{{ week_label(busiest, bi) }}</div>
+    <div class="text-xs text-zinc-500 mt-1 num">{{ busiest.open_entries|length }} due{% if busiest.weight %}, {{ '%.0f'|format(busiest.weight) }}% of grades{% endif %}</div>
+    {% else %}
+    <div class="mt-2 text-xl font-semibold text-white">None</div>
+    <div class="text-xs text-zinc-500 mt-1">Nothing heavy coming up</div>
+    {% endif %}
+  </div>
+  <div class="px-4 sm:px-5 py-4">
+    <div class="label">Free weeks</div>
+    <div class="mt-2 text-xl font-semibold text-white num">{{ free }} <span class="text-sm font-normal text-zinc-500">of {{ weeks|length }}</span></div>
+    <div class="text-xs text-zinc-500 mt-1">With nothing due</div>
+  </div>
+</div>
+
+{# ---------------------------------------------------------------- chart #}
+<div class="strip">
+  <span>Grades at stake each week</span>
+  <span class="strip-right hidden sm:flex">
+      {% for code in active %}<span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm {{ colours.get(code, 'bg-zinc-500') }}"></span>{{ code }}</span>{% endfor %}
+  </span>
+</div>
+<div class="pad border-b border-zinc-800">
+  <div class="relative">
+    {# gridlines #}
+    <div class="absolute inset-x-0 top-0 h-44 pointer-events-none">
+      {% for f in [0, 0.5, 1] %}
+      <div class="absolute inset-x-0 border-t border-dashed border-zinc-800" style="top: {{ f * 100 }}%"></div>
+      {% endfor %}
+    </div>
+    <div class="grid gap-1 sm:gap-2" style="grid-template-columns: repeat({{ weeks|length }}, minmax(0, 1fr))">
+      {% for w in weeks %}
+      <a {% if w.entries %}href="#wk-{{ loop.index0 }}"{% endif %} class="group flex flex-col items-center {% if not w.entries %}pointer-events-none{% endif %}"
+         title="{{ week_label(w, loop.index0) }}{% for e in w.entries %}&#10;{{ e.a.course_code }} {{ e.a.name }}{% if e.weight %} ({{ '%.0f'|format(e.weight) }}%){% endif %}{% endfor %}">
+        <div class="relative w-full h-44 flex items-end justify-center rounded-md {% if loop.first %}bg-white/[0.025]{% endif %}">
+          {% if w.entries %}
+          <div class="absolute left-0 right-0 text-center text-[11px] num {% if w.level >= 3 %}text-zinc-200{% else %}text-zinc-500{% endif %}"
+               style="bottom: calc({{ (w.load / scale * 100)|round(1) }}% + 4px)">{% if w.weight %}{{ '%.0f'|format(w.weight) }}%{% else %}{{ w.entries|length }}{% endif %}</div>
+          <div class="w-3/5 max-w-[34px] flex flex-col-reverse rounded-[4px] overflow-hidden group-hover:brightness-125 transition"
+               style="height: {{ (w.load / scale * 100)|round(1) }}%">
+            {% for code, v in w.by_course() %}<div class="{{ colours.get(code, 'bg-zinc-500') }} {% if not loop.last %}border-t border-zinc-950/60{% endif %}" style="height: {{ (v / w.load * 100)|round(1) }}%"></div>{% endfor %}
+          </div>
+          {% else %}
+          <div class="w-3/5 max-w-[34px] h-[3px] rounded-full bg-zinc-800"></div>
+          {% endif %}
+        </div>
+        <div class="mt-2 text-[11px] num whitespace-nowrap {% if loop.first %}text-brand-300 font-medium{% else %}text-zinc-500{% endif %}">
+          {% if loop.first %}Now{% else %}{{ w.start.strftime('%-d %b') }}{% endif %}</div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{# ---------------------------------------------------------------- agenda #}
+{{ ui.strip('Week by week') }}
+{% set ns = namespace(gap_start=None, gap_end=None) %}
+<div>
+{% for w in weeks %}
+  {% if not w.entries %}
+    {% if ns.gap_start is none %}{% set ns.gap_start = w.start %}{% endif %}{% set ns.gap_end = w.start %}
+  {% endif %}
+  {% if ns.gap_start is not none and (w.entries or loop.last) %}
+    <div class="flex items-center gap-3 px-4 py-2.5 text-xs text-zinc-600 border-b border-zinc-800/50">
+      <span class="h-px flex-1 border-t border-dashed border-zinc-800"></span>
+      <span>Nothing due {% if ns.gap_start == ns.gap_end %}week of {{ ns.gap_start.strftime('%-d %b') }}{% else %}{{ ns.gap_start.strftime('%-d %b') }} to {{ (ns.gap_end + timedelta(days=6)).strftime('%-d %b') }}{% endif %}</span>
+      <span class="h-px flex-1 border-t border-dashed border-zinc-800"></span>
+    </div>
+    {% set ns.gap_start = None %}
+  {% endif %}
+  {% if w.entries %}
+  <section id="wk-{{ loop.index0 }}" class="scroll-mt-24">
+    <div class="strip bg-transparent">
+      <span>{{ week_label(w, loop.index0) }}</span>
+      <span class="strip-count">{{ w.start.strftime('%-d %b') }} – {{ (w.start + timedelta(days=6)).strftime('%-d %b') }}</span>
+      <span class="strip-right">
+        {% if w.weight %}<span class="num">{{ '%.0f'|format(w.weight) }}% of grades</span>{% endif %}
+        <span class="badge badge-{{ level_tone[w.level] }}">{{ w.level_name if w.open_entries else 'Done' }}</span>
+      </span>
+    </div>
+    <div>
+      {% for e in w.entries %}
+      <a href="{{ e.a.url or '/courses/' ~ e.a.course_code }}" target="_blank" class="line line-link {% if e.a.submitted %}opacity-45{% endif %}">
+        <div class="w-12 shrink-0 text-center">
+          <div class="text-[11px] uppercase tracking-wide text-zinc-500">{{ e.due.strftime('%a') }}</div>
+          <div class="text-base font-semibold text-zinc-100 num leading-tight">{{ e.due.day }}</div>
+        </div>
+        <span class="w-1 self-stretch rounded-full {{ colours.get(e.a.course_code, 'bg-zinc-600') }}"></span>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-sm text-zinc-100 truncate {% if e.a.submitted %}line-through{% endif %}">{{ e.a.name }}</span>
+            {% if e.a.is_exam %}<span class="badge badge-brand">Exam</span>{% endif %}
+            {% if e.a.submitted %}<span class="badge badge-green">Done</span>{% endif %}
+          </div>
+          <div class="text-xs text-zinc-500 num">{{ e.a.course_code }} · {{ e.due.strftime('%H:%M') }}{% if e.a.location %} · {{ e.a.location }}{% endif %}</div>
+        </div>
+        <span class="text-sm num {% if e.weight >= 20 %}text-white font-medium{% elif e.weight %}text-zinc-300{% else %}text-zinc-600{% endif %}">{% if e.weight %}{{ '%.0f'|format(e.weight) if e.weight >= 1 else '%.1f'|format(e.weight) }}%{% else %}–{% endif %}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+{% endfor %}
+</div>
+</div>
+{% endblock %}

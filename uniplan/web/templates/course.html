@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ c.code }} · UniPlan{% endblock %}
+
+{% macro assessment_row(a, weight=None) %}
+<div class="line {% if a.hidden or a.duplicate_of %}opacity-40{% endif %}">
+  <div class="flex-1 min-w-0">
+    <a href="{{ a.url }}" target="_blank" class="text-zinc-100 hover:underline underline-offset-4 decoration-white/20 truncate block">{{ a.name }}</a>
+    <div class="flex flex-wrap items-center gap-x-2 text-xs text-zinc-500">
+      {% if a.due_at %}<span class="num">{{ a.due_at|loc('%a %-d %b, %H:%M') }}</span>{% endif %}
+      {% if a.is_exam %}<span class="badge badge-brand">Exam</span>{% endif %}
+      {% if a.duplicate_of %}<span>Merged with the Canvas copy</span>{% endif %}
+      {% if a.excluded %}<span>Not counted</span>{% endif %}
+    </div>
+  </div>
+  {% if weight is not none %}<span class="hidden sm:block w-24 text-right text-xs text-zinc-500 num">{{ '%g'|format(weight) }}% of course</span>{% endif %}
+  <div class="w-24 text-right num">
+    {% if a.graded and a.score is not none and a.points_possible %}
+      <div class="text-zinc-100">{{ '%.0f'|format(a.score / a.points_possible * 100) }}%</div>
+      <div class="text-[11px] text-zinc-500">{{ '%g'|format(a.score) }} / {{ '%g'|format(a.points_possible) }}</div>
+    {% elif a.submitted %}<span class="badge badge-green">Submitted</span>
+    {% else %}<span class="text-xs text-zinc-600">–</span>{% endif %}
+  </div>
+  <details data-menu class="relative">
+    <summary class="btn-ghost h-7 w-7 justify-center p-0" title="Edit">{{ ui.icon('pen', 'w-3.5 h-3.5') }}</summary>
+    <form method="post" action="/assessments/{{ a.id }}/edit" class="menu">
+      {% if not a.duplicate_of %}
+      <label class="block"><span class="label">Counts towards</span>
+        <select name="group_id" class="input input-sm mt-1.5">
+          <option value="">Nothing (not counted)</option>
+          {% for g in groups if g.weight > 0 %}<option value="{{ g.id }}" {% if a.group_id == g.id %}selected{% endif %}>{{ g.name }} ({{ '%g'|format(g.weight) }}%)</option>{% endfor %}
+        </select></label>
+      {% endif %}
+      <div class="grid grid-cols-2 gap-2">
+        <label class="block"><span class="label">Due</span><input type="datetime-local" name="due_local" class="input input-sm mt-1.5 px-1.5"></label>
+        <label class="block"><span class="label">Study hours</span><input name="effort_hours" value="{{ a.effort_hours if a.effort_hours is not none else '' }}" placeholder="auto" class="input input-sm mt-1.5"></label>
+      </div>
+      <div class="space-y-1.5 text-[13px] text-zinc-300">
+        {% for flag, label in [('submitted','Submitted'), ('is_exam','It is an exam'), ('excluded',"Don't count it"), ('hidden','Hide it')] %}
+        <input type="hidden" name="set_{{ flag }}" value="1">
+        <label class="flex gap-2 items-center"><input type="checkbox" name="{{ flag }}" value="1" {% if a[flag] %}checked{% endif %}>{{ label }}</label>
+        {% endfor %}
+        {% if a.duplicate_of %}<label class="flex gap-2 items-center"><input type="checkbox" name="unlink" value="1">It's not a duplicate</label>{% endif %}
+      </div>
+      <button class="btn-primary w-full">Save</button>
+    </form>
+  </details>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="panel">
+  {% call ui.head(c.code, c.name, back='/courses') %}
+    {% if c.hidden %}<span class="badge badge-zinc">{{ ui.icon('eye-off', 'w-3 h-3') }}Hidden</span>{% endif %}
+    <form method="post" action="/courses/{{ c.code }}/hide">
+      <input type="hidden" name="hidden" value="{{ '0' if c.hidden else '1' }}">
+      <button class="btn" title="Hidden courses stay out of marks, calendar, study plan and updates">{{ ui.icon('eye' if c.hidden else 'eye-off', 'w-3.5 h-3.5') }}{{ 'Unhide course' if c.hidden else 'Hide course' }}</button>
+    </form>
+  {% endcall %}
+
+  <nav class="tabs">
+    {% for key, label in [('overview', 'Overview'), ('assessments', 'Assessments'), ('weightings', 'Weightings'), ('whatif', 'What if')] %}
+    <a href="?tab={{ key }}" class="tab {% if tab == key %}tab-active{% endif %}">{{ label }}{% if key == 'weightings' and not c.weights_confirmed and m.total_weight %}<span class="dot bg-orange-400 ml-1.5"></span>{% endif %}</a>
+    {% endfor %}
+  </nav>
+
+  {% if msg %}{{ ui.notice(msg) }}{% endif %}
+
+{# ============================================================ overview #}
+{% if tab == 'overview' %}
+{% set e, l, r = m.bar %}
+  {% if m.total_weight and not c.weights_confirmed %}{{ ui.notice('Give the weightings a quick check so these numbers are right.', 'amber', '?tab=weightings') }}{% endif %}
+  <div class="split">
+    <div class="split-main">
+      <div class="pad border-b border-zinc-800">
+        <div class="flex flex-wrap items-end gap-x-10 gap-y-4">
+          <div>
+            <div class="label mb-1.5">Current mark</div>
+            <div class="flex items-baseline gap-2.5">
+              <span class="text-5xl font-semibold tracking-tight text-white num">{% if m.current_avg is not none %}{{ '%.1f'|format(m.current_avg) }}{% else %}–{% endif %}</span>
+              {% if m.current_avg is not none %}<span class="text-xl text-zinc-500">%</span>{{ ui.band_badge(band(m.current_avg)) }}{% endif %}
+            </div>
+          </div>
+          <p class="flex-1 min-w-[220px] text-[14px] text-zinc-300 leading-relaxed">
+            {% if not m.total_weight %}Add the weightings so UniPlan can work out your standing.
+            {% elif m.target %}Average <span class="text-white font-medium">{{ '%.0f'|format(m.target[1]) }}%</span> on the remaining {{ '%g'|format(m.remaining_weight|round(1)) }}% of the course to finish with {{ 'an' if m.target[0] == 'HD' else 'a' }} <span class="text-white font-medium">{{ m.target[0] }}</span>.
+            {% elif m.secured_band %}You've secured {{ 'an' if m.secured_band == 'HD' else 'a' }} <span class="text-white font-medium">{{ m.secured_band }}</span>.
+            {% else %}Your final mark is {{ '%.1f'|format(m.min_final or 0) }}%.{% endif %}
+          </p>
+        </div>
+        <div class="mt-6 flex h-1.5 rounded-full overflow-hidden bg-zinc-800">
+          <div class="bg-brand-400" style="width: {{ e }}%"></div>
+          <div class="bg-zinc-600/60" style="width: {{ l }}%"></div>
+        </div>
+        <div class="mt-2.5 flex flex-wrap gap-x-5 gap-y-1 text-xs text-zinc-500 num">
+          <span class="inline-flex items-center gap-1.5"><span class="dot bg-brand-400"></span>Earned {{ '%.1f'|format(e) }}%</span>
+          <span class="inline-flex items-center gap-1.5"><span class="dot bg-zinc-600"></span>Dropped {{ '%.1f'|format(l) }}%</span>
+          <span class="inline-flex items-center gap-1.5"><span class="dot bg-zinc-800 ring-1 ring-zinc-700"></span>Still to come {{ '%.1f'|format(r) }}%</span>
+        </div>
+      </div>
+
+      {{ ui.strip('Coming up', coming|length) }}
+      {% for a in coming %}
+      <a href="{{ a.url }}" target="_blank" class="line line-link">
+        <span class="w-4 h-4 rounded-full border-[1.5px] {% if a.is_exam %}border-brand-400{% else %}border-zinc-500{% endif %} shrink-0"></span>
+        <span class="flex-1 truncate text-zinc-100">{{ a.name }}</span>
+        {% if a.is_exam %}<span class="badge badge-brand">Exam</span>{% endif %}
+        <span class="text-xs text-zinc-500 num w-24 text-right">{{ a.due_at|loc('%a %-d %b') }}</span>
+        <span class="w-14 text-right">{{ ui.due_chip(a.due_at) }}</span>
+      </a>
+      {% else %}
+      <div class="line text-zinc-500">Nothing left to hand in.</div>
+      {% endfor %}
+
+      {% set recent = items|selectattr('importance', 'ge', 2)|list %}
+      {% if recent %}
+      {{ ui.strip('Recent updates', recent[:3]|length) }}
+      {% for i in recent[:3] %}
+      <a href="{{ i.url }}" target="_blank" class="line line-link items-start py-3">
+        <span class="dot mt-1.5 {% if i.importance >= 3 %}bg-rose-400{% else %}bg-brand-400{% endif %}"></span>
+        <div class="flex-1 min-w-0">
+          <div class="text-zinc-100">{{ i.title }}</div>
+          {% if i.summary %}<p class="text-xs text-zinc-500 mt-0.5 leading-relaxed">{{ i.summary }}</p>{% endif %}
+        </div>
+        <span class="text-xs text-zinc-600 num">{{ i.posted_at|loc('%-d %b') }}</span>
+      </a>
+      {% endfor %}
+      {% endif %}
+    </div>
+
+    <aside class="split-side">
+      {{ ui.strip('To finish with') }}
+      {% for name, lo, status in m.needed_table() %}
+      <div class="line">
+        <span class="w-9">{{ ui.band_badge(name) }}</span>
+        <span class="flex-1 text-xs text-zinc-500">{{ '%g'|format(lo) }}% or more</span>
+        <span class="num {% if status == 'secured' %}text-emerald-400{% elif status in ['not possible', 'missed'] %}text-zinc-600{% else %}text-zinc-100{% endif %}">
+          {% if status == 'secured' %}Secured{% elif status in ['not possible', 'missed'] %}Out of reach{% else %}{{ status }} avg{% endif %}</span>
+      </div>
+      {% endfor %}
+    </aside>
+  </div>
+
+{# ============================================================ assessments #}
+{% elif tab == 'assessments' %}
+  {% set singles = [] %}{% set multis = [] %}
+  {% for g, items_ in by_group %}{% if items_|length == 1 %}{% set _ = singles.append((g, items_[0])) %}{% else %}{% set _ = multis.append((g, items_)) %}{% endif %}{% endfor %}
+  {% if singles %}
+    {{ ui.strip('Tasks', singles|length) }}
+    {% for g, a in singles %}{{ assessment_row(a, g.weight) }}{% endfor %}
+  {% endif %}
+  {% for g, items_ in multis %}
+    {{ ui.strip(g.name, items_|length, ('%g'|format(g.weight)) ~ '% of course' ~ (' · lowest ' ~ g.drop_lowest ~ ' dropped' if g.drop_lowest else '')) }}
+    {% for a in items_ %}{{ assessment_row(a) }}{% else %}<div class="line text-zinc-500">Nothing in Canvas or Gradescope for this yet.</div>{% endfor %}
+  {% endfor %}
+  {% if ungrouped %}
+    {{ ui.strip('Not counted', ungrouped|length, 'Use the pencil to assign a group') }}
+    {% for a in ungrouped %}{{ assessment_row(a) }}{% endfor %}
+  {% endif %}
+  <div class="flex-1"></div>
+  <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-t border-zinc-800">
+    {% if n_extra %}<a href="?tab=assessments{{ '' if show_all else '&all=1' }}" class="btn-ghost">{{ ui.icon('eye-off' if show_all else 'eye', 'w-3.5 h-3.5') }}{{ 'Hide' if show_all else 'Show' }} {{ n_extra }} merged or hidden</a>{% endif %}
+    <details data-menu class="relative ml-auto">
+      <summary class="btn">{{ ui.icon('plus', 'w-3.5 h-3.5') }}Add assessment</summary>
+      <form method="post" action="/courses/{{ c.code }}/assessments" class="menu bottom-full mb-2">
+        <label class="block"><span class="label">Name</span><input name="name" required class="input input-sm mt-1.5"></label>
+        <label class="block"><span class="label">Due</span><input type="datetime-local" name="due_local" class="input input-sm mt-1.5"></label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block"><span class="label">Score</span><input name="score" class="input input-sm mt-1.5"></label>
+          <label class="block"><span class="label">Out of</span><input name="points" class="input input-sm mt-1.5"></label>
+        </div>
+        <label class="flex gap-2 items-center text-[13px]"><input type="checkbox" name="is_exam" value="1">It is an exam</label>
+        <button class="btn-primary w-full">Add</button>
+      </form>
+    </details>
+  </div>
+
+{# ============================================================ weightings #}
+{% elif tab == 'weightings' %}
+  <div class="split">
+    <form method="post" action="/courses/{{ c.code }}/groups" class="split-main">
+      <div class="strip text-zinc-500 font-normal">
+        <span class="flex-1 text-zinc-200 font-medium">In use</span>
+        <span class="w-20 text-right">Weight</span>
+        <span class="w-16 text-center" title="Drop the lowest N results">Drop</span>
+        <span class="w-12 text-center" title="Part of a shared cap">Cap</span>
+        <span class="w-8"></span>
+      </div>
+      {% for g in groups if g.weight > 0 or g.source == 'manual' %}
+      <div class="line py-1.5">
+        <input name="n_{{ g.id }}" value="{{ g.name }}" class="input input-sm flex-1 min-w-0 bg-transparent border-transparent hover:border-zinc-700">
+        <div class="w-20 relative"><input name="w_{{ g.id }}" value="{{ '%g'|format(g.weight) }}" class="input input-sm text-right pr-6 num"><span class="absolute right-2 top-1.5 text-xs text-zinc-500">%</span></div>
+        <input name="d_{{ g.id }}" value="{{ g.drop_lowest or '' }}" placeholder="0" class="input input-sm w-16 text-center num">
+        <span class="w-12 grid place-items-center"><input type="checkbox" name="c_{{ g.id }}" value="1" {% if g.capped %}checked{% endif %}></span>
+        <label class="w-8 grid place-items-center text-zinc-600 hover:text-rose-400 cursor-pointer" title="Remove"><input type="checkbox" name="del_{{ g.id }}" value="1" class="peer sr-only">{{ ui.icon('trash', 'w-3.5 h-3.5 peer-checked:text-rose-400') }}</label>
+        <input type="hidden" name="h_{{ g.id }}" value="{{ g.hurdle }}">
+      </div>
+      {% endfor %}
+      {% for g in groups if g.weight <= 0 and g.source != 'manual' %}
+        <input type="hidden" name="n_{{ g.id }}" value="{{ g.name }}"><input type="hidden" name="w_{{ g.id }}" value="0">
+        <input type="hidden" name="d_{{ g.id }}" value="{{ g.drop_lowest }}"><input type="hidden" name="h_{{ g.id }}" value="{{ g.hurdle }}">
+        {% if g.capped %}<input type="hidden" name="c_{{ g.id }}" value="1">{% endif %}
+      {% endfor %}
+      <div class="line py-1.5">
+        <input name="new_name" placeholder="Add a task, e.g. Final exam" class="input input-sm flex-1 min-w-0 bg-transparent border-transparent hover:border-zinc-700">
+        <div class="w-20 relative"><input name="new_weight" placeholder="0" class="input input-sm text-right pr-6 num"><span class="absolute right-2 top-1.5 text-xs text-zinc-500">%</span></div>
+        <span class="w-16"></span><span class="w-12"></span><span class="w-8"></span>
+      </div>
+      <div class="line">
+        <label class="flex items-center gap-2 text-xs text-zinc-400">Capped tasks count for at most
+          <span class="relative w-20"><input name="cap_weight" value="{{ '%g'|format(c.cap_weight) if c.cap_weight else '' }}" placeholder="none" class="input input-sm text-right pr-6 num"><span class="absolute right-2 top-1.5 text-xs text-zinc-500">%</span></span></label>
+        <span class="ml-auto text-xs num {% if m.total_weight and (m.total_weight - 100)|abs > 0.5 %}text-orange-300{% else %}text-zinc-500{% endif %}">Total {{ '%g'|format(m.total_weight) }}%</span>
+      </div>
+      <div class="flex-1"></div>
+      <div class="flex items-center gap-2 px-4 py-3 border-t border-zinc-800">
+        {% if c.weights_confirmed %}<span class="badge badge-green">{{ ui.icon('check', 'w-3 h-3') }}Confirmed</span>{% endif %}
+        <button class="btn ml-auto">Save</button>
+        {% if not c.weights_confirmed %}<button name="confirm" value="1" class="btn-primary">{{ ui.icon('check', 'w-3.5 h-3.5') }}Looks right</button>{% endif %}
+      </div>
+    </form>
+
+    <aside class="split-side">
+      <div class="strip">
+        <span>From the course pages</span>
+        <span class="strip-right">
+          {% if proposal and proposal.found %}
+            {% if in_use %}<span class="badge badge-green">In use</span>
+            {% elif proposal.agrees_with_canvas %}<span class="badge badge-green">Matches Canvas</span>
+            {% else %}<span class="badge badge-amber">Different</span>{% endif %}
+          {% endif %}
+        </span>
+      </div>
+      {% if proposal and proposal.found %}
+        {% if proposal.provisional %}<div class="notice notice-amber text-xs">Read by the offline model. Double-check before using.</div>{% endif %}
+        {% for g in proposal.groups %}
+        <div class="line items-start py-2.5">
+          <div class="flex-1 min-w-0">
+            <div class="text-zinc-200">{{ g.name }}</div>
+            {% set rules = [] %}
+            {% if g.capped %}{% set _ = rules.append('shared cap') %}{% endif %}
+            {% if g.keep_best %}{% set _ = rules.append('best ' ~ g.keep_best ~ ' count') %}{% endif %}
+            {% if g.notes and not g.capped %}{% set _ = rules.append(g.notes) %}{% endif %}
+            {% if rules %}<div class="text-xs text-zinc-500">{{ rules|join(' · ') }}</div>{% endif %}
+          </div>
+          <span class="num text-zinc-100">{{ '%g'|format(g.weight) }}%</span>
+        </div>
+        {% endfor %}
+        <div class="px-4 py-3 space-y-2 text-xs text-zinc-500">
+          {% if proposal.cap_weight %}<p>Capped tasks together count for at most <span class="text-zinc-200">{{ '%g'|format(proposal.cap_weight) }}%</span>.</p>{% endif %}
+          <p class="text-zinc-600">Read from {{ proposal.sources|join(', ') }}</p>
+        </div>
+        <div class="flex-1"></div>
+        <div class="flex gap-2 px-4 py-3 border-t border-zinc-800">
+          {% if not in_use %}
+          <form method="post" action="/courses/{{ c.code }}/weights/apply" class="flex-1"
+                onsubmit="return confirm('Use these weightings for {{ c.code }}?')"><button class="btn-primary w-full">Use these weightings</button></form>
+          {% endif %}
+          <form method="post" action="/courses/{{ c.code }}/weights/recheck" class="{% if in_use %}ml-auto{% endif %}"><button class="btn">{{ ui.icon('refresh', 'w-3.5 h-3.5') }}Re-check</button></form>
+        </div>
+      {% else %}
+        <p class="px-4 py-4 text-[13px] text-zinc-500">{% if proposal %}The class summary and Canvas pages don't state the weightings.{% else %}UniPlan reads these at the next sync.{% endif %}</p>
+        <div class="px-4"><form method="post" action="/courses/{{ c.code }}/weights/recheck"><button class="btn">{{ ui.icon('refresh', 'w-3.5 h-3.5') }}Check now</button></form></div>
+      {% endif %}
+    </aside>
+  </div>
+
+{# ============================================================ what if #}
+{% else %}
+{% set open_items = [] %}
+{% set capped_full = m.cap and m.cap_earned_raw >= m.cap %}
+{% for gr in m.groups if not (gr.group.capped and capped_full) %}{% for it in gr.items %}{% if it.pct is none and not it.dropped %}{% set _ = open_items.append(it) %}{% endif %}{% endfor %}{% endfor %}
+  <form hx-post="/courses/{{ c.code }}/whatif" hx-target="#whatif" hx-trigger="load, input changed delay:250ms" class="split">
+    <div class="split-main">
+      {{ ui.strip('If I average') }}
+      <div class="pad border-b border-zinc-800">
+        <div class="flex items-center gap-4">
+          <input type="range" name="uniform" min="0" max="100" value="70" class="flex-1" oninput="this.nextElementSibling.textContent = this.value + '%'">
+          <span class="w-12 text-right text-lg font-semibold text-white num">70%</span>
+        </div>
+        <p class="text-xs text-zinc-500 mt-3">On everything still to come ({{ '%g'|format(m.remaining_weight|round(1)) }}% of the course).{% if capped_full %} Your capped tasks are already maxed out, so they're left out.{% endif %}</p>
+      </div>
+      {% if open_items %}
+      {{ ui.strip('Or set specific results', open_items|length) }}
+      {% for it in open_items %}
+      <label class="line py-1.5">
+        <span class="flex-1 truncate text-zinc-200">{{ it.assessment.name }}</span>
+        <span class="text-xs text-zinc-500 num">{{ '%.1f'|format(it.weight) }}%</span>
+        <span class="relative w-20"><input name="wi_{{ it.assessment.id }}" type="number" min="0" max="100" placeholder="–" class="input input-sm text-right pr-6 num"><span class="absolute right-2 top-1.5 text-xs text-zinc-500">%</span></span>
+      </label>
+      {% endfor %}
+      {% endif %}
+    </div>
+    <aside class="split-side">
+      {{ ui.strip('You would finish with') }}
+      <div id="whatif" class="pad"></div>
+    </aside>
+  </form>
+{% endif %}
+</div>
+{% endblock %}

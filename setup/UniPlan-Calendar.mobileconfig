@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>CalDAVAccountDescription</key>
+			<string>UniPlan</string>
+			<key>CalDAVHostName</key>
+			<string>127.0.0.1</string>
+			<key>CalDAVPort</key>
+			<integer>5233</integer>
+			<key>CalDAVPrincipalURL</key>
+			<string>https://127.0.0.1:5233/uniplan/</string>
+			<key>CalDAVUseSSL</key>
+			<true/>
+			<key>CalDAVUsername</key>
+			<string>uniplan</string>
+			<key>PayloadDisplayName</key>
+			<string>UniPlan Calendar</string>
+			<key>PayloadIdentifier</key>
+			<string>au.uniplan.caldav.account</string>
+			<key>PayloadType</key>
+			<string>com.apple.caldav.account</string>
+			<key>PayloadUUID</key>
+			<string>72D8FD43-6D72-4E6B-8C01-75C4F4413247</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>PayloadDescription</key>
+	<string>Adds your local UniPlan calendars. You will be asked for CALDAV_PASSWORD.</string>
+	<key>PayloadDisplayName</key>
+	<string>UniPlan Calendar</string>
+	<key>PayloadIdentifier</key>
+	<string>au.uniplan.caldav</string>
+	<key>PayloadOrganization</key>
+	<string>UniPlan</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>D4B15C50-A8E7-4824-A65C-165470DF21C5</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

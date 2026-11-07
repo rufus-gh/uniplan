@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Study · UniPlan{% endblock %}
+{% block content %}
+<div class="panel">
+  {% call ui.head('Study plan', 'Time set aside before each deadline, around your classes') %}
+    <a href="/settings" class="btn">{{ ui.icon('clock', 'w-3.5 h-3.5') }}Study hours</a>
+  {% endcall %}
+  <div class="split">
+    <div class="split-main">
+      {{ ui.strip('Planned', blocks|length) }}
+      {% for b in blocks %}{% set a = names.get(b.assessment_id) %}
+      <div class="line">
+        <div class="w-28 shrink-0">
+          <div class="text-zinc-200">{{ b.start|loc('%a %-d %b') }}</div>
+          <div class="text-xs text-zinc-500 num">{{ b.start|loc('%H:%M') }}–{{ b.end|loc('%H:%M') }}</div>
+        </div>
+        <span class="w-0.5 self-stretch rounded-full bg-emerald-400/70"></span>
+        <div class="flex-1 min-w-0">
+          {% if a %}<div class="text-zinc-100 truncate">{{ a.name }}</div><div class="font-mono text-[11.5px] text-zinc-500">{{ a.course_code }}</div>{% endif %}
+        </div>
+        <form method="post" action="/study/{{ b.id }}/delete"><button class="btn-ghost text-xs" title="Remove this block and plan the time again">Re-plan</button></form>
+      </div>
+      {% else %}
+      {{ ui.empty('No study time planned. Blocks appear when deadlines are coming up.', 'book') }}
+      {% endfor %}
+      <div class="flex-1"></div>
+      <p class="px-4 sm:px-5 py-3 text-[11px] text-zinc-600 border-t border-zinc-800">Blocks are on your Study Blocks calendar. Move one on your phone and UniPlan keeps your change.</p>
+    </div>
+    <aside class="split-side">
+      {{ ui.strip('Work left', todo|length) }}
+      {% for a in todo %}{% set done = hours_used[a.id] %}{% set need = efforts[a.id] %}
+      <div class="line items-start py-3">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2"><span class="font-mono text-[11.5px] text-zinc-500">{{ a.course_code }}</span><span class="ml-auto">{{ ui.due_chip(a.due_at) }}</span></div>
+          <div class="text-zinc-100 truncate">{{ a.name }}</div>
+          <div class="mt-2 flex items-center gap-2">
+            <div class="flex-1 h-1 rounded-full bg-zinc-800 overflow-hidden"><div class="h-full bg-emerald-400/80" style="width: {{ [100, (done / need * 100) if need else 100]|min }}%"></div></div>
+            <span class="text-[11px] text-zinc-500 num">{{ '%.1f'|format(done) }} of {{ '%g'|format(need) }}h</span>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="line text-zinc-500">Nothing outstanding.</div>
+      {% endfor %}
+    </aside>
+  </div>
+</div>
+{% endblock %}

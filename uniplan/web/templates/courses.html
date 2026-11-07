@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Marks · UniPlan{% endblock %}
+{% block content %}
+<div class="panel">
+  {% call ui.head('Marks', courses|length ~ ' courses') %}
+    {% if overall is not none %}<span class="text-xs text-zinc-500 num">Average across courses <span class="text-zinc-200">{{ '%.1f'|format(overall) }}%</span></span>{% endif %}
+  {% endcall %}
+
+  <div class="strip text-zinc-500 font-normal">
+    <span class="flex-1">Course</span>
+    <span class="hidden md:block w-56">Progress</span>
+    <span class="hidden sm:block w-20 text-right">Graded</span>
+    <span class="w-20 text-right">Mark</span>
+    <span class="w-10"></span>
+  </div>
+  {% for c in courses %}{% set m = marks[c.code] %}{% set e, l, r = m.bar %}
+  <a href="/courses/{{ c.code }}" class="line line-link min-h-[64px] {% if not c.active %}opacity-50{% endif %}">
+    <span class="w-1.5 h-1.5 rounded-full shrink-0 {{ colours.get(c.code, 'bg-zinc-500') }}"></span>
+    <div class="flex-1 min-w-0">
+      <div class="font-mono text-[12.5px] text-zinc-100">{{ c.code }}</div>
+      <div class="text-xs text-zinc-500 truncate">
+        {% if not m.total_weight %}Add weightings to see your standing
+        {% elif m.target %}{{ '%.0f'|format(m.target[1]) }}% on the rest for {{ 'an' if m.target[0] == 'HD' else 'a' }} {{ m.target[0] }}
+        {% elif m.secured_band %}{{ m.secured_band }} secured
+        {% else %}Final {{ '%.1f'|format(m.min_final or 0) }}%{% endif %}
+        <span class="text-zinc-600"> · {{ c.name }}</span>
+      </div>
+    </div>
+    <div class="hidden md:flex w-56 h-1.5 rounded-full overflow-hidden bg-zinc-800">
+      <div class="{{ colours.get(c.code, 'bg-zinc-500') }}" style="width: {{ e }}%"></div>
+      <div class="bg-zinc-600/60" style="width: {{ l }}%"></div>
+    </div>
+    <span class="hidden sm:block w-20 text-right text-xs text-zinc-500 num">{{ '%.0f'|format(m.graded_share) }}%</span>
+    <span class="w-20 text-right text-[15px] font-semibold text-white num">{% if m.current_avg is not none %}{{ '%.1f'|format(m.current_avg) }}%{% else %}<span class="text-zinc-600 font-normal">–</span>{% endif %}</span>
+    <span class="w-10 text-right">{% if m.current_avg is not none %}{{ ui.band_badge(band(m.current_avg)) }}{% endif %}</span>
+  </a>
+  {% else %}
+  {{ ui.empty('No courses yet. Press Sync to pull them in from Canvas.') }}
+  {% endfor %}
+  <div class="flex-1"></div>
+  {% if hidden %}<p class="px-4 sm:px-5 py-3 text-[11px] text-zinc-600">{{ hidden|length }} hidden course{{ '' if hidden|length == 1 else 's' }}. Manage them in <a href="/settings" class="underline hover:text-zinc-300">Settings</a>.</p>{% endif %}
+</div>
+{% endblock %}
