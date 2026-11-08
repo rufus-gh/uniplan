@@ -5,6 +5,8 @@ import * as library from './rag/library'
 import { parseModel, stream } from './providers'
 import { claudeStatus, invalidateUsage, rewriteQueries } from './providers/claude'
 import { queryLabels } from './rag/labels'
+import { pageImages } from './rag/pages'
+import { runPython } from './python'
 
 const running = new Map<string, AbortController>()
 
@@ -42,6 +44,10 @@ const SEARCH_PROMPT = `You have a search_notes tool over the student's own notes
 - Search with precise mathematical terms, as the notes would phrase it (e.g. "definition convergence sequence epsilon N", "Proposition 3.12", "uniformly continuous definition"), not the student's wording. Try a rephrased search if the first misses. At most 3 searches.
 - Don't narrate searching; just answer, citing excerpts as [n].`
 
+const PYTHON_PROMPT = `You can run Python (sympy, numpy, scipy) with the run_python tool. Use it to verify calculations, simplifications, integrals, eigenvalues, numerical checks or small counterexample searches when that makes your answer more reliable, especially before stating a final numeric or symbolic result. Keep the maths in your answer; mention briefly that you checked it (e.g. "checked with sympy"). Don't use it for pure proof-writing.`
+
+const PAGES_PROMPT = `When images of note pages are attached, they are the original pages behind the excerpts. Read formulas from the images (the extracted text garbles maths) and quote the course's statements exactly.`
+
 const MODE_PROMPT: Record<TutorMode, string> = {
   explain: 'Mode: Explain. Work through the problem fully with clear reasoning, then summarise the method in one or two lines.',
   hint: 'Mode: Hints only. Do NOT give the full solution or final answer. Give the smallest useful next hint, ask a guiding question, and stop. Give more only if the student asks.',
@@ -49,8 +55,15 @@ const MODE_PROMPT: Record<TutorMode, string> = {
     'Mode: Check my work. The student will share their attempt. Identify exactly where it is correct and where it goes wrong, quoting the step. Do not rewrite the whole solution unless asked.'
 }
 
-function systemPrompt(t: Thread, canSearch: boolean) {
-  return [BASE_PROMPT, t.courseId ? MATERIALS_PROMPT : '', canSearch ? SEARCH_PROMPT : '', MODE_PROMPT[t.mode]]
+function systemPrompt(t: Thread, canSearch: boolean, tools: boolean) {
+  return [
+    BASE_PROMPT.replace('Do not run commands, read files or use tools.', tools ? 'Only use the tools described below.' : 'Do not run commands, read files or use tools.'),
+    t.courseId ? MATERIALS_PROMPT : '',
+    t.courseId ? PAGES_PROMPT : '',
+    canSearch ? SEARCH_PROMPT : '',
+    tools ? PYTHON_PROMPT : '',
+    MODE_PROMPT[t.mode]
+  ]
     .filter(Boolean)
     .join('\n\n')
 }
@@ -216,6 +229,18 @@ export async function send(req: SendRequest, emit: (e: ChatEvent) => void) {
     // Claude can search the notes itself; new hits are numbered after the
     // automatic ones so citations stay consistent, and shown live.
     const canSearch = provider === 'claude' && !!thread.courseId
+    const isClaude = provider === 'claude'
+    const status = (text: string) => emit({ threadId: thread.id, messageId: assistantId, type: 'status', text })
+
+    // Original page images for the cited PDF pages (exact formulas).
+    let pages: Awaited<ReturnType<typeof pageImages>> = { images: [], labels: [] }
+    if (sources.length) {
+      try {
+        pages = await pageImages(sources)
+      } catch (e) {
+        console.error('[lemma] page images failed', e)
+      }
+    }
     const searchNotes = async (q: string) => {
       const hits = await library.search(q, thread.courseId, 5)
       const out: Source[] = []
@@ -239,10 +264,13 @@ export async function send(req: SendRequest, emit: (e: ChatEvent) => void) {
         model,
         effort: thread.effort,
         searchNotes: canSearch ? searchNotes : undefined,
+        runPython: isClaude ? (code: string) => runPython(code, status) : undefined,
         onStatus: (text) => emit({ threadId: thread.id, messageId: assistantId, type: 'status', text }),
-        system: systemPrompt(thread, canSearch),
-        text: buildPrompt(history, seen, req.text, sources, canSearch),
-        images: req.images ?? [],
+        system: systemPrompt(thread, canSearch, isClaude),
+        text:
+          buildPrompt(history, seen, req.text, sources, canSearch) +
+          (pages.labels.length ? `\n\n(Attached after any student images: original note pages ${pages.labels.join('; ')}.)` : ''),
+        images: [...(req.images ?? []), ...pages.images],
         resume: session?.id,
         abort,
         onSession: (id) => (newSession = id),

@@ -22,6 +22,8 @@ export interface StreamArgs {
    * Returns text to hand back to the model.
    */
   searchNotes?: (query: string) => Promise<string>
+  /** When set, the model may run Python to check its working (Claude only). */
+  runPython?: (code: string) => Promise<string>
   onStatus?(text: string): void
   onSession(id: string): void
   onDelta(text: string): void

@@ -100,13 +100,12 @@ export async function streamClaude(a: StreamArgs, useInstalledCli = false): Prom
   let model: string | undefined
   let error: string | undefined
 
-  // Optional: let Claude search the course notes itself (in-process MCP tool).
+  // Optional in-process tools: search the course notes, run Python.
   const notes = a.searchNotes
-  const lemmaServer = notes
-    ? createSdkMcpServer({
-        name: 'lemma',
-        version: '1.0.0',
-        tools: [
+  const py = a.runPython
+  const tools = [
+    ...(notes
+      ? [
           tool(
             'search_notes',
             'Search the student’s own lecture notes, worksheets and lecture transcripts for this course. Use precise mathematical terms (e.g. "definition convergence sequence epsilon N") or a numbered reference (e.g. "Proposition 3.12"). Returns numbered excerpts; cite them as [n].',
@@ -117,8 +116,20 @@ export async function streamClaude(a: StreamArgs, useInstalledCli = false): Prom
             }
           )
         ]
-      })
-    : null
+      : []),
+    ...(py
+      ? [
+          tool(
+            'run_python',
+            'Run a short Python 3 script to check working: arithmetic, algebra (sympy), numerics (numpy/scipy), counterexample searches. Print what you need. No network or file access; 20 s limit.',
+            { code: z.string().describe('Python source; use print() for output') },
+            async ({ code }) => ({ content: [{ type: 'text' as const, text: await py(code) }] })
+          )
+        ]
+      : [])
+  ]
+  const lemmaServer = tools.length ? createSdkMcpServer({ name: 'lemma', version: '1.0.0', tools }) : null
+  const allowed = [...(notes ? ['mcp__lemma__search_notes'] : []), ...(py ? ['mcp__lemma__run_python'] : [])]
 
   try {
     const q = query({
@@ -130,11 +141,11 @@ export async function streamClaude(a: StreamArgs, useInstalledCli = false): Prom
         systemPrompt: a.system,
         tools: [],
         mcpServers: lemmaServer ? { lemma: lemmaServer } : {},
-        allowedTools: lemmaServer ? ['mcp__lemma__search_notes'] : [],
+        allowedTools: allowed,
         settingSources: [],
         includePartialMessages: true,
-        // One reply, plus up to three searches of the notes when enabled.
-        maxTurns: lemmaServer ? 4 : 1,
+        // One reply, plus a few tool calls (searches / Python) when enabled.
+        maxTurns: lemmaServer ? 8 : 1,
         cwd: workspace(),
         env: env(cli),
         pathToClaudeCodeExecutable: useInstalledCli && cli ? cli : undefined,
@@ -160,7 +171,7 @@ export async function streamClaude(a: StreamArgs, useInstalledCli = false): Prom
           out += '\n\n'
           a.onDelta('\n\n')
         } else if (ev.type === 'content_block_start' && ev.content_block.type === 'tool_use') {
-          a.onStatus?.('Searching your notes…')
+          a.onStatus?.('Working…')
         }
       } else if (m.type === 'assistant' && !out) {
         for (const b of m.message.content) if (b.type === 'text') out += b.text

@@ -37,7 +37,13 @@ npm run dist          # build dist/mac-arm64/Lemma.app
 - **Query rewriting:** Haiku rewrites the question into textbook-style search queries (adds ~3 s). Transcripts are
   down-weighted and capped unless you ask about the lectures, repeated boilerplate is dropped, and near-duplicates merge.
 - **Claude can search again** with a `search_notes` tool when the automatic excerpts miss something.
+- **Page images:** for cited PDF pages, the original page is rendered (cached) and attached, so the model reads formulas
+  exactly instead of garbled extracted text.
 - If nothing is relevant, no notes are added.
+
+**Python (Claude):** a `run_python` tool with sympy/numpy/scipy, used to check calculations. On first use a private
+environment is created with `uv` in the app's data folder. Each run is sandboxed (`sandbox-exec`): no network, no
+file writes outside a temp folder, 20 s limit.
 - Pick a course (or *All courses*) in the composer. The top passages go into the prompt. The tutor follows your course's
   definitions and notation, cites them as [1], [2], and shows clickable source chips.
 
