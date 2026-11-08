@@ -1,0 +1,203 @@
+import { useCallback, useMemo, useState } from 'react'
+import type { ClaudeUsage, ProviderStatus, ThreadSummary, UsageWindow } from '../../../shared/types'
+import { api, fmtReset, groupThreads, mod, PROVIDERS } from '../lib'
+import { Book, LemmaMark, Plus, ProviderLogo, Refresh, Search, Sidebar as SidebarIcon, Trash } from './Icons'
+
+interface Props {
+  threads: ThreadSummary[]
+  activeId: string | null
+  streaming: Set<string>
+  collapsed: boolean
+  statuses: ProviderStatus[] | null
+  libraryOpen: boolean
+  fileCount: number
+  onLibrary(): void
+  onLogin(p: ProviderStatus['provider']): void
+  onSelect(id: string): void
+  onNew(): void
+  onDelete(id: string): void
+  onToggle(): void
+  onPalette(): void
+}
+
+function Meter({ label, w }: { label: string; w: UsageWindow }) {
+  const pct = Math.min(100, Math.max(0, Math.round(w.percent)))
+  return (
+    <div className="meter">
+      <div className="meter-row">
+        <span>{label}</span>
+        <span className="meter-pct">{pct}% used</span>
+      </div>
+      <div className="meter-track">
+        <div className={`meter-fill ${pct >= 95 ? 'crit' : pct >= 80 ? 'high' : ''}`} style={{ width: `${pct}%` }} />
+      </div>
+      {w.resetsAt && <div className="meter-reset">Resets {fmtReset(w.resetsAt)}</div>}
+    </div>
+  )
+}
+
+/** Plan usage for Claude, shown when hovering the Claude account row. */
+function UsageCard({ usage, loading, onRefresh }: { usage: ClaudeUsage | null; loading: boolean; onRefresh(): void }) {
+  const ago = usage ? Math.round((Date.now() - usage.fetchedAt) / 60000) : 0
+  return (
+    <div className="usage-pop">
+      <div className="usage-card">
+        <div className="usage-head">
+          <ProviderLogo provider="claude" size={14} />
+          <span className="grow">Claude {usage?.plan ?? ''} usage</span>
+          <button className="icon-btn sm" title="Refresh" onClick={onRefresh}>
+            <Refresh size={13} className={loading ? 'spin' : ''} />
+          </button>
+        </div>
+        {!usage && <div className="usage-note">Loading…</div>}
+        {usage?.error && <div className="usage-note">{usage.error}</div>}
+        {usage?.session && <Meter label="Current session" w={usage.session} />}
+        {usage?.weekly && <Meter label="Weekly · all models" w={usage.weekly} />}
+        {usage?.weeklyOpus && <Meter label="Weekly · Opus" w={usage.weeklyOpus} />}
+        {usage?.weeklySonnet && <Meter label="Weekly · Sonnet" w={usage.weeklySonnet} />}
+        {usage?.breakdown && usage.breakdown.length > 0 && (
+          <div className="usage-note">
+            This week: {usage.breakdown.map((b) => `${b.name} ${b.percent}%`).join(' · ')}
+          </div>
+        )}
+        {usage && !usage.error && <div className="usage-foot">Updated {ago < 1 ? 'just now' : `${ago} min ago`}</div>}
+      </div>
+    </div>
+  )
+}
+
+export function Sidebar(p: Props) {
+  const [usage, setUsage] = useState<ClaudeUsage | null>(null)
+  const [usageLoading, setUsageLoading] = useState(false)
+  const loadUsage = useCallback(async (force = false) => {
+    setUsageLoading(true)
+    try {
+      setUsage(await api.claudeUsage(force))
+    } finally {
+      setUsageLoading(false)
+    }
+  }, [])
+
+  const [q, setQ] = useState('')
+  const groups = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    const list = needle
+      ? p.threads.filter((t) => t.title.toLowerCase().includes(needle) || t.preview.toLowerCase().includes(needle))
+      : p.threads
+    return groupThreads(list)
+  }, [p.threads, q])
+
+  return (
+    <aside className={`sidebar ${p.collapsed ? 'collapsed' : ''}`}>
+      <div className="sidebar-top drag">
+        <div className="brand">
+          <LemmaMark size={18} />
+          Lemma
+        </div>
+        <button className="icon-btn no-drag" title={`Hide sidebar  ${mod}\\`} onClick={p.onToggle}>
+          <SidebarIcon />
+        </button>
+      </div>
+
+      <div className="sidebar-actions">
+        <button className="nav-item" onClick={p.onNew}>
+          <Plus />
+          <span className="grow">New chat</span>
+          <kbd>{mod}N</kbd>
+        </button>
+        <button className={`nav-item ${p.libraryOpen ? 'active' : ''}`} onClick={p.onLibrary}>
+          <Book />
+          <span className="grow">Library</span>
+          {p.fileCount > 0 && <span className="count">{p.fileCount}</span>}
+          <kbd>{mod}L</kbd>
+        </button>
+        <label className="search">
+          <Search />
+          <input
+            placeholder="Search chats"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === 'Escape' && setQ('')}
+          />
+          {!q && (
+            <kbd role="button" onClick={p.onPalette}>
+              {mod}K
+            </kbd>
+          )}
+        </label>
+      </div>
+
+      <nav className="threads">
+        {groups.map((g) => (
+          <div key={g.label}>
+            <div className="group-label">{g.label}</div>
+            {g.items.map((t) => (
+              <div
+                key={t.id}
+                role="button"
+                tabIndex={0}
+                className={`thread ${t.id === p.activeId && !p.libraryOpen ? 'active' : ''}`}
+                onClick={() => p.onSelect(t.id)}
+                onKeyDown={(e) => e.key === 'Enter' && p.onSelect(t.id)}
+                title={t.title}
+              >
+                <span className="t">{t.title}</span>
+                {p.streaming.has(t.id) && <span className="live" />}
+                <button
+                  className="icon-btn sm del"
+                  title="Delete chat"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    p.onDelete(t.id)
+                  }}
+                >
+                  <Trash size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ))}
+        {groups.length === 0 && (
+          <div className="group-label" style={{ paddingTop: 18 }}>
+            {q ? 'No matching chats' : 'No chats yet'}
+          </div>
+        )}
+      </nav>
+
+      <div className="sidebar-foot">
+        {!p.statuses && (
+          <div className="acct">
+            <span className="dot" />
+            <span className="grow">Checking accounts…</span>
+          </div>
+        )}
+        {p.statuses?.map((st) => {
+          const withUsage = st.provider === 'claude' && st.ok
+          const row = (
+            <button
+              key={st.provider}
+              className="acct"
+              title={withUsage ? undefined : st.ok ? 'Signed in' : (st.error ?? 'Click to sign in')}
+              onClick={() => !st.ok && st.canLogin && p.onLogin(st.provider)}
+            >
+              <ProviderLogo provider={st.provider} size={12} />
+              <span className="grow">
+                {PROVIDERS[st.provider].account}
+                {st.ok ? (st.plan ? ` · ${st.plan}` : '') : ' · Not signed in'}
+              </span>
+              {withUsage && usage?.session && <span className="acct-pct">{Math.round(usage.session.percent)}%</span>}
+              <span className={`dot ${st.ok ? 'ok' : 'warn'}`} />
+            </button>
+          )
+          if (!withUsage) return row
+          return (
+            <div key={st.provider} className="acct-wrap" onMouseEnter={() => loadUsage()} onFocus={() => loadUsage()}>
+              {row}
+              <UsageCard usage={usage} loading={usageLoading} onRefresh={() => loadUsage(true)} />
+            </div>
+          )
+        })}
+      </div>
+    </aside>
+  )
+}

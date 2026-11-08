@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2a30"/>
+      <stop offset="1" stop-color="#0c0c0f"/>
+    </linearGradient>
+    <linearGradient id="qed" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a5a6ff"/>
+      <stop offset="1" stop-color="#6b6cf0"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d4d4dc"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <!-- macOS icon grid: 824px tile inset 100px -->
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)" filter="url(#shadow)"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="184.5" fill="none" stroke="#ffffff" stroke-opacity="0.09" stroke-width="3"/>
+  <!-- L -->
+  <path d="M322 300h76v348h154v76H354a32 32 0 0 1-32-32z" fill="url(#ink)"/>
+  <!-- QED tombstone -->
+  <rect x="582" y="572" width="152" height="152" rx="22" fill="url(#qed)"/>
+</svg>
