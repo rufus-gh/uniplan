@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ClaudeUsage, ProviderStatus, ThreadSummary, UsageWindow } from '../../../shared/types'
-import { api, fmtReset, groupThreads, mod, PROVIDERS } from '../lib'
-import { Book, LemmaMark, Plus, ProviderLogo, Refresh, Search, Sidebar as SidebarIcon, Trash } from './Icons'
+import { api, fmtReset, groupThreads, mod, plainTitle, PROVIDERS } from '../lib'
+import { Book, Gear, LemmaMark, Plus, ProviderLogo, Refresh, Search, Sidebar as SidebarIcon, Target, Trash } from './Icons'
 
 interface Props {
   threads: ThreadSummary[]
@@ -10,6 +10,8 @@ interface Props {
   collapsed: boolean
   statuses: ProviderStatus[] | null
   libraryOpen: boolean
+  practiceOpen: boolean
+  onPractice(): void
   fileCount: number
   onLibrary(): void
   onLogin(p: ProviderStatus['provider']): void
@@ -18,6 +20,7 @@ interface Props {
   onDelete(id: string): void
   onToggle(): void
   onPalette(): void
+  onSettings(): void
 }
 
 function Meter({ label, w }: { label: string; w: UsageWindow }) {
@@ -78,6 +81,22 @@ export function Sidebar(p: Props) {
     }
   }, [])
 
+  // Keep the usage figure in the sidebar current without needing a hover:
+  // on load (once Claude is signed in), every 5 minutes, and after each reply finishes.
+  const claudeOk = !!p.statuses?.find((s) => s.provider === 'claude')?.ok
+  const replying = p.streaming.size > 0
+  useEffect(() => {
+    if (!claudeOk) return
+    loadUsage()
+    const t = setInterval(() => loadUsage(), 5 * 60_000)
+    return () => clearInterval(t)
+  }, [claudeOk, loadUsage])
+  const wasReplying = useRef(false)
+  useEffect(() => {
+    if (claudeOk && wasReplying.current && !replying) loadUsage(true)
+    wasReplying.current = replying
+  }, [replying, claudeOk, loadUsage])
+
   const [q, setQ] = useState('')
   const groups = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -103,13 +122,24 @@ export function Sidebar(p: Props) {
         <button className="nav-item" onClick={p.onNew}>
           <Plus />
           <span className="grow">New chat</span>
-          <kbd>{mod}N</kbd>
+          <span className="nav-end">
+            <kbd>{mod}N</kbd>
+          </span>
         </button>
         <button className={`nav-item ${p.libraryOpen ? 'active' : ''}`} onClick={p.onLibrary}>
           <Book />
           <span className="grow">Library</span>
-          {p.fileCount > 0 && <span className="count">{p.fileCount}</span>}
-          <kbd>{mod}L</kbd>
+          <span className="nav-end">
+            {p.fileCount > 0 && <span className="count">{p.fileCount}</span>}
+            <kbd>{mod}L</kbd>
+          </span>
+        </button>
+        <button className={`nav-item ${p.practiceOpen ? 'active' : ''}`} onClick={p.onPractice}>
+          <Target />
+          <span className="grow">Practice</span>
+          <span className="nav-end">
+            <kbd>{mod}P</kbd>
+          </span>
         </button>
         <label className="search">
           <Search />
@@ -120,9 +150,11 @@ export function Sidebar(p: Props) {
             onKeyDown={(e) => e.key === 'Escape' && setQ('')}
           />
           {!q && (
-            <kbd role="button" onClick={p.onPalette}>
-              {mod}K
-            </kbd>
+            <span className="nav-end">
+              <kbd role="button" onClick={p.onPalette}>
+                {mod}K
+              </kbd>
+            </span>
           )}
         </label>
       </div>
@@ -136,12 +168,12 @@ export function Sidebar(p: Props) {
                 key={t.id}
                 role="button"
                 tabIndex={0}
-                className={`thread ${t.id === p.activeId && !p.libraryOpen ? 'active' : ''}`}
+                className={`thread ${t.id === p.activeId && !p.libraryOpen && !p.practiceOpen ? 'active' : ''}`}
                 onClick={() => p.onSelect(t.id)}
                 onKeyDown={(e) => e.key === 'Enter' && p.onSelect(t.id)}
-                title={t.title}
+                title={plainTitle(t.title)}
               >
-                <span className="t">{t.title}</span>
+                <span className="t">{plainTitle(t.title)}</span>
                 {p.streaming.has(t.id) && <span className="live" />}
                 <button
                   className="icon-btn sm del"
@@ -165,38 +197,22 @@ export function Sidebar(p: Props) {
       </nav>
 
       <div className="sidebar-foot">
-        {!p.statuses && (
-          <div className="acct">
-            <span className="dot" />
-            <span className="grow">Checking accounts…</span>
-          </div>
-        )}
-        {p.statuses?.map((st) => {
-          const withUsage = st.provider === 'claude' && st.ok
-          const row = (
-            <button
-              key={st.provider}
-              className="acct"
-              title={withUsage ? undefined : st.ok ? 'Signed in' : (st.error ?? 'Click to sign in')}
-              onClick={() => !st.ok && st.canLogin && p.onLogin(st.provider)}
-            >
-              <ProviderLogo provider={st.provider} size={12} />
-              <span className="grow">
-                {PROVIDERS[st.provider].account}
-                {st.ok ? (st.plan ? ` · ${st.plan}` : '') : ' · Not signed in'}
-              </span>
-              {withUsage && usage?.session && <span className="acct-pct">{Math.round(usage.session.percent)}%</span>}
-              <span className={`dot ${st.ok ? 'ok' : 'warn'}`} />
-            </button>
-          )
-          if (!withUsage) return row
-          return (
-            <div key={st.provider} className="acct-wrap" onMouseEnter={() => loadUsage()} onFocus={() => loadUsage()}>
-              {row}
-              <UsageCard usage={usage} loading={usageLoading} onRefresh={() => loadUsage(true)} />
-            </div>
-          )
-        })}
+        <button
+          className="nav-item settings-item"
+          onClick={p.onSettings}
+          title={`Settings & AI Providers  ${mod},`}
+        >
+          <Gear size={15} />
+          <span className="grow">Settings</span>
+          <span className="nav-end">
+            {(p.statuses?.filter((s) => s.ok).length ?? 0) > 0 ? (
+              <span className="count ok">{p.statuses?.filter((s) => s.ok).length} active</span>
+            ) : (
+              p.statuses && <span className="count warn">0 active</span>
+            )}
+            <kbd>{mod},</kbd>
+          </span>
+        </button>
       </div>
     </aside>
   )

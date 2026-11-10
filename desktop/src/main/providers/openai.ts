@@ -69,17 +69,17 @@ function chatgptPlan(): string | undefined {
 
 export async function openaiStatus(): Promise<ProviderStatus> {
   const bin = codexBinary()
-  if (!bin) return { provider: 'openai', ok: false, canLogin: false, error: 'Codex CLI missing from the app bundle.' }
+  if (!bin) return { provider: 'openai', ok: false, canLogin: false, authCommand: 'codex login', detectedPath: null, error: 'Codex CLI missing from the app bundle.' }
   try {
     const { stdout, stderr } = await run(bin, ['login', 'status'], { env: cleanEnv(), timeout: 15000 })
     const s = `${stdout}\n${stderr}`
-    if (/logged in using chatgpt/i.test(s)) return { provider: 'openai', ok: true, plan: chatgptPlan(), canLogin: true }
+    if (/logged in using chatgpt/i.test(s)) return { provider: 'openai', ok: true, plan: chatgptPlan(), canLogin: true, authCommand: 'codex login', detectedPath: bin }
     if (/logged in/i.test(s) && !/not logged in/i.test(s)) {
-      return { provider: 'openai', ok: false, canLogin: true, error: 'Codex is signed in with an API key. Sign in with ChatGPT to use your subscription.' }
+      return { provider: 'openai', ok: false, canLogin: true, authCommand: 'codex login', detectedPath: bin, error: 'Codex is signed in with an API key. Sign in with ChatGPT to use your subscription.' }
     }
-    return { provider: 'openai', ok: false, canLogin: true }
+    return { provider: 'openai', ok: false, canLogin: true, authCommand: 'codex login', detectedPath: bin }
   } catch {
-    return { provider: 'openai', ok: false, canLogin: true }
+    return { provider: 'openai', ok: false, canLogin: true, authCommand: 'codex login', detectedPath: bin }
   }
 }
 

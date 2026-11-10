@@ -15,6 +15,10 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(0)
   const list = useRef<HTMLDivElement>(null)
+  // Keyboard moves scroll the list; mouse moves never do. Hover only counts when the pointer really moved
+  // (a list scrolling under a still cursor must not steal the selection).
+  const keyNav = useRef(false)
+  const lastPos = useRef({ x: -1, y: -1 })
 
   const filtered = useMemo(() => {
     const terms = q.toLowerCase().split(/\s+/).filter(Boolean)
@@ -27,6 +31,8 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
 
   useEffect(() => setSel(0), [q])
   useEffect(() => {
+    if (!keyNav.current) return
+    keyNav.current = false
     list.current?.querySelector('.sel')?.scrollIntoView({ block: 'nearest' })
   }, [sel])
 
@@ -50,9 +56,11 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') {
                 e.preventDefault()
+                keyNav.current = true
                 setSel((s) => Math.min(s + 1, filtered.length - 1))
               } else if (e.key === 'ArrowUp') {
                 e.preventDefault()
+                keyNav.current = true
                 setSel((s) => Math.max(s - 1, 0))
               } else if (e.key === 'Enter') {
                 e.preventDefault()
@@ -73,7 +81,13 @@ export function CommandPalette({ commands, onClose }: { commands: Command[]; onC
                 {header && <div className="palette-section">{header}</div>}
                 <button
                   className={`palette-item ${i === sel ? 'sel' : ''}`}
-                  onMouseMove={() => setSel(i)}
+                  onMouseMove={(e) => {
+                    const { clientX: x, clientY: y } = e
+                    if (x === lastPos.current.x && y === lastPos.current.y) return
+                    lastPos.current = { x, y }
+                    keyNav.current = false
+                    if (i !== sel) setSel(i)
+                  }}
                   onClick={() => run(c)}
                 >
                   {c.icon && <span className="ico">{c.icon}</span>}

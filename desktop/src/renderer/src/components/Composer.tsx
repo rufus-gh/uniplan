@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react'
 import type { Course, Effort, ImageAttachment, ModelOption, Provider, ProviderStatus, TutorMode } from '../../../shared/types'
-import { EFFORTS, MODES, PROVIDERS, mod, providerOf, readImage } from '../lib'
+import { ALL_PROVIDERS, EFFORTS, MODES, PROVIDERS, mod, plainTitle, providerOf, readImage } from '../lib'
 import { ArrowUp, Book, Check, Chevron, EffortBars, ImageIcon, ProviderLogo, Square, X } from './Icons'
 
 export interface ComposerHandle {
@@ -18,6 +18,9 @@ interface Props {
   courses: Course[]
   streaming: boolean
   disabled: boolean
+  /** Selected text being replied to. */
+  quote: string | null
+  onClearQuote(): void
   onModel(id: string): void
   onMode(m: TutorMode): void
   onEffort(e: Effort): void
@@ -57,37 +60,6 @@ function Picker({ label, children, wide }: { label: ReactNode; children: (close:
   )
 }
 
-function EffortSlider({ value, onChange }: { value: Effort; onChange(e: Effort): void }) {
-  const idx = Math.max(0, EFFORTS.findIndex((e) => e.id === value))
-  return (
-    <div className="effort">
-      <div className="menu-head">
-        <span className="grow">Thinking effort</span>
-        <span className="menu-plan">Claude</span>
-      </div>
-      <input
-        type="range"
-        min={0}
-        max={EFFORTS.length - 1}
-        step={1}
-        value={idx}
-        aria-label="Thinking effort"
-        aria-valuetext={EFFORTS[idx].label}
-        style={{ ['--pct' as string]: `${(idx / (EFFORTS.length - 1)) * 100}%` }}
-        onChange={(e) => onChange(EFFORTS[Number(e.target.value)].id)}
-      />
-      <div className="effort-ticks">
-        {EFFORTS.map((e, i) => (
-          <button key={e.id} className={i === idx ? 'on' : ''} onClick={() => onChange(e.id)}>
-            {e.id === 'xhigh' ? 'X-High' : e.label}
-          </button>
-        ))}
-      </div>
-      <p className="effort-desc">{EFFORTS[idx].desc}</p>
-    </div>
-  )
-}
-
 export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, ref) {
   const [text, setText] = useState('')
   const [images, setImages] = useState<ImageAttachment[]>([])
@@ -105,6 +77,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
       })
     }
   }))
+
+  useEffect(() => {
+    if (p.quote) ta.current?.focus()
+  }, [p.quote])
 
   useEffect(() => {
     const el = ta.current
@@ -151,6 +127,15 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
           addFiles(e.dataTransfer.files)
         }}
       >
+        {p.quote && (
+          <div className="quote-chip">
+            <span className="quote-bar" />
+            <span className="quote-text">{plainTitle(p.quote).slice(0, 220)}</span>
+            <button className="icon-btn sm" title="Remove quote" onClick={p.onClearQuote}>
+              <X size={12} />
+            </button>
+          </div>
+        )}
         {images.length > 0 && (
           <div className="attachments">
             {images.map((img, i) => (
@@ -172,7 +157,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
               ? 'Paste a problem — you’ll get a nudge, not the answer…'
               : p.mode === 'check'
                 ? 'Paste the problem and your working…'
-                : 'Ask about a problem, or paste a screenshot of one…'
+                : p.quote
+                  ? 'Ask about the selected text…'
+                  : 'Ask about a problem, or paste a screenshot of one…'
           }
           onChange={(e) => setText(e.target.value)}
           onPaste={(e) => {
@@ -192,14 +179,6 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
           }}
         />
         <div className="composer-bar">
-          <div className="seg" role="tablist" aria-label="Tutor mode">
-            {MODES.map((m) => (
-              <button key={m.id} className={p.mode === m.id ? 'on' : ''} title={m.desc} onClick={() => p.onMode(m.id)}>
-                {m.label}
-              </button>
-            ))}
-          </div>
-
           <Picker
             wide
             label={
@@ -210,9 +189,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
             }
           >
             {(close) =>
-              (['claude', 'openai'] as Provider[]).map((prov) => {
+              ALL_PROVIDERS.map((prov) => {
                 const st = status(prov)
                 const list = p.models.filter((m) => m.provider === prov)
+                if (!list.length && !st?.canLogin) return null
                 return (
                   <div key={prov} className="menu-group">
                     <div className="menu-head">
@@ -261,18 +241,43 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
           </Picker>
 
           {provider === 'claude' && (
-            <Picker
-              label={
-                <>
-                  <EffortBars level={EFFORTS.findIndex((e) => e.id === p.effort) + 1} />
-                  {EFFORTS.find((e) => e.id === p.effort)?.label}
-                </>
-              }
+            <button
+              className="pill"
+              title={`Thinking effort: ${EFFORTS.find((e) => e.id === p.effort)?.label}. ${EFFORTS.find((e) => e.id === p.effort)?.desc} Click to change.`}
+              onClick={() => p.onEffort(EFFORTS[(EFFORTS.findIndex((e) => e.id === p.effort) + 1) % EFFORTS.length].id)}
             >
-              {() => <EffortSlider value={p.effort} onChange={p.onEffort} />}
-            </Picker>
+              <EffortBars level={EFFORTS.findIndex((e) => e.id === p.effort) + 1} />
+              {EFFORTS.find((e) => e.id === p.effort)?.label}
+            </button>
           )}
 
+          <Picker label={MODES.find((m) => m.id === p.mode)?.label}>
+            {(close) => (
+              <>
+                <div className="menu-head">
+                  <span className="grow">Tutor mode</span>
+                </div>
+                {MODES.map((m) => (
+                  <button
+                    key={m.id}
+                    className="menu-item"
+                    onClick={() => {
+                      p.onMode(m.id)
+                      close()
+                    }}
+                  >
+                    <span className="label">
+                      {m.label}
+                      <div className="desc">{m.desc}</div>
+                    </span>
+                    {p.mode === m.id && <Check className="check" />}
+                  </button>
+                ))}
+              </>
+            )}
+          </Picker>
+
+          {p.courses.length > 0 && (
           <Picker
             label={
               <>
@@ -320,6 +325,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
               </>
             )}
           </Picker>
+          )}
 
           <span className="spacer" />
           <button className="icon-btn" title="Attach image" onClick={() => file.current?.click()}>
@@ -346,20 +352,6 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
             </button>
           )}
         </div>
-      </div>
-      <div className="composer-hint">
-        <span>
-          <kbd>↵</kbd> send
-        </span>
-        <span>
-          <kbd>⇧↵</kbd> new line
-        </span>
-        <span>
-          <kbd>{mod}V</kbd> paste screenshot
-        </span>
-        <span>
-          <kbd>{mod}K</kbd> commands
-        </span>
       </div>
     </div>
   )

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { cleanMath } from '../shared/text'
 import type { ChatEvent, ChatMessage, SendRequest, Source, Thread, TutorMode } from '../shared/types'
 import * as store from './store'
 import * as library from './rag/library'
@@ -157,19 +158,10 @@ function buildPrompt(history: ChatMessage[], seen: number, text: string, sources
 
 // ---------------------------------------------------------------- titles
 
-const SYM: Record<string, string> = {
-  sqrt: '√', int: '∫', sum: 'Σ', prod: 'Π', infty: '∞', pi: 'π', alpha: 'α', beta: 'β', gamma: 'γ',
-  theta: 'θ', lambda: 'λ', mu: 'μ', sigma: 'σ', epsilon: 'ε', delta: 'δ', partial: '∂', nabla: '∇',
-  cdot: '·', times: '×', leq: '≤', geq: '≥', neq: '≠', to: '→', in: '∈', mathbb: '', mathrm: '', frac: ''
-}
-
 export function titleFrom(text: string) {
-  const line = text
-    .replace(/\\([a-zA-Z]+)/g, (m, name: string) => SYM[name] ?? m.slice(1))
-    .replace(/[{}$]/g, '')
-    .replace(/\\[,;!]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  // Ignore quoted lines ("> …") from reply-to-selection; title from what the student actually asked.
+  const own = text.split('\n').filter((l) => !l.trim().startsWith('>')).join(' ')
+  const line = cleanMath(own)
   if (!line) return 'Image problem'
   return line.length > 48 ? `${line.slice(0, 46).trimEnd()}…` : line
 }
@@ -188,6 +180,16 @@ export async function send(req: SendRequest, emit: (e: ChatEvent) => void) {
     if (last?.role !== 'user') throw new Error('Nothing to retry')
     thread.messages.pop()
     req = { threadId: req.threadId, text: last.content, images: last.images }
+  }
+
+  if (req.editId) {
+    // Rewind the chat to just before the edited message. Provider sessions have seen the dropped turns, so
+    // they're discarded and the remaining history is replayed into a fresh session.
+    const idx = thread.messages.findIndex((m) => m.id === req.editId && m.role === 'user')
+    if (idx === -1) throw new Error('Message not found')
+    thread.messages = thread.messages.slice(0, idx)
+    thread.sessions = undefined
+    if (idx === 0) thread.title = 'New chat'
   }
 
   const history = [...thread.messages]

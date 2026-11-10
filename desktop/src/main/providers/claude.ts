@@ -1,11 +1,12 @@
 import { app } from 'electron'
 import { existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { createSdkMcpServer, query, tool, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import type { ClaudeUsage, ModelOption, ProviderStatus, UsageWindow } from '../../shared/types'
-import { cleanEnv, dirOf, run, runInTerminal, shellQuote, workspace, type StreamArgs, type StreamResult } from './common'
+import { cleanEnv, dirOf, run, runInTerminal, shellQuote, unpacked, workspace, type StreamArgs, type StreamResult } from './common'
 
 /*
  * Claude runs through Claude Code, so messages use whichever Claude account is
@@ -21,6 +22,24 @@ export const CLAUDE_MODELS: ModelOption[] = [
   { id: 'claude:claude-sonnet-5-5', provider: 'claude', model: 'claude-sonnet-5-5', label: 'Sonnet 5.5', desc: 'Fast and strong, everyday problems' },
   { id: 'claude:claude-haiku-5-5', provider: 'claude', model: 'claude-haiku-5-5', label: 'Haiku 5.5', desc: 'Quickest, for simple checks' }
 ]
+
+/**
+ * The Claude Code binary bundled with the SDK. In a packaged app the SDK can't
+ * find it by itself (it looks inside app.asar, which isn't a real directory:
+ * ENOTDIR), so we locate the unpacked copy and pass its path explicitly.
+ */
+function bundledClaude(): string | undefined {
+  try {
+    const pkg = `@anthropic-ai/claude-agent-sdk-darwin-${process.arch === 'arm64' ? 'arm64' : 'x64'}/package.json`
+    const p = unpacked(join(dirname(createRequire(import.meta.url).resolve(pkg)), 'claude'))
+    return existsSync(p) ? p : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Which executable the SDK should run: the bundled one, or the user's installed CLI as a fallback. */
+const exe = (installed: string | null, useInstalled = false) => (useInstalled && installed ? installed : bundledClaude())
 
 let cliPath: string | null | undefined
 
@@ -53,7 +72,14 @@ function env(cli: string | null) {
 export async function claudeStatus(): Promise<ProviderStatus> {
   const cli = await findClaude()
   if (!cli) {
-    return { provider: 'claude', ok: false, canLogin: false, error: 'Install Claude Code: curl -fsSL https://claude.ai/install.sh | bash' }
+    return {
+      provider: 'claude',
+      ok: false,
+      canLogin: true,
+      authCommand: 'claude auth login',
+      detectedPath: null,
+      error: 'Install Claude Code: curl -fsSL https://claude.ai/install.sh | bash'
+    }
   }
   let out = ''
   try {
@@ -64,9 +90,9 @@ export async function claudeStatus(): Promise<ProviderStatus> {
   try {
     const s = JSON.parse(out) as { loggedIn?: boolean; subscriptionType?: string }
     const plan = s.subscriptionType ? s.subscriptionType[0].toUpperCase() + s.subscriptionType.slice(1) : undefined
-    return { provider: 'claude', ok: !!s.loggedIn, plan, canLogin: true }
+    return { provider: 'claude', ok: !!s.loggedIn, plan, canLogin: true, authCommand: 'claude auth login', detectedPath: cli }
   } catch {
-    return { provider: 'claude', ok: false, canLogin: true, error: 'Could not read Claude sign-in status.' }
+    return { provider: 'claude', ok: false, canLogin: true, authCommand: 'claude auth login', detectedPath: cli, error: 'Could not read Claude sign-in status.' }
   }
 }
 
@@ -148,7 +174,7 @@ export async function streamClaude(a: StreamArgs, useInstalledCli = false): Prom
         maxTurns: lemmaServer ? 8 : 1,
         cwd: workspace(),
         env: env(cli),
-        pathToClaudeCodeExecutable: useInstalledCli && cli ? cli : undefined,
+        pathToClaudeCodeExecutable: exe(cli, useInstalledCli),
         abortController: a.abort,
         extraArgs: { 'strict-mcp-config': null }
       }
@@ -218,7 +244,7 @@ export async function claudeUsage(force = false): Promise<ClaudeUsage> {
     await hold // never sends a message
   }
   try {
-    const q = query({ prompt: idle(), options: { tools: [], settingSources: [], cwd: workspace(), env: env(cli), abortController: abort } })
+    const q = query({ prompt: idle(), options: { tools: [], settingSources: [], cwd: workspace(), env: env(cli), abortController: abort, pathToClaudeCodeExecutable: exe(cli) } })
     // Experimental SDK API (it may be renamed in later SDK versions).
     const fn = (q as unknown as Record<string, unknown>)['usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET']
     if (typeof fn !== 'function') throw new Error('Usage isn’t available in this version of the Claude SDK.')
@@ -288,6 +314,7 @@ export async function rewriteQueries(question: string, previous?: string, timeou
         cwd: workspace(),
         env: env(cli),
         abortController: abort,
+        pathToClaudeCodeExecutable: exe(cli),
         extraArgs: { 'strict-mcp-config': null }
       }
     })) {

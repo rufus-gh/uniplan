@@ -521,3 +521,33 @@ function finish(picked: { c: ChunkRec; score: number }[]): SearchHit[] {
 export function courseName(id: string) {
   return id === 'all' ? 'All courses' : courses.find((c) => c.id === id)?.name
 }
+
+/**
+ * Random numbered statements (definitions, theorems, …) from a course's notes,
+ * spread over different files. Used when practice has no topic.
+ */
+export async function sample(courseId: string, k = 4): Promise<SearchHit[]> {
+  await load()
+  const pool: ChunkRec[] = []
+  for (const [fid, recs] of index) {
+    const f = files.find((x) => x.id === fid)
+    if (!f || !(courseId === 'all' || f.courseId === courseId)) continue
+    for (const r of recs) if (!r.transcript && !r.boilerplate && r.labels.some((l) => l.defining)) pool.push(r)
+  }
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[pool[i], pool[j]] = [pool[j], pool[i]]
+  }
+  const picks: ChunkRec[] = []
+  const perFile = new Map<string, number>()
+  for (const c of pool) {
+    if (picks.length >= k) break
+    if ((perFile.get(c.fileId) ?? 0) >= 2) continue
+    perFile.set(c.fileId, (perFile.get(c.fileId) ?? 0) + 1)
+    picks.push(c)
+  }
+  return picks.map((c, n) => {
+    const f = files.find((y) => y.id === c.fileId)!
+    return { n: n + 1, fileId: f.id, fileName: f.name, courseId: f.courseId, location: c.loc, excerpt: c.text, score: 1 }
+  })
+}

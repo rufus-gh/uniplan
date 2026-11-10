@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import * as store from './store'
 import * as library from './rag/library'
 import * as chat from './chat'
+import * as practice from './practice'
 import { listModels, login, normalizeModel, providerStatus } from './providers'
 import { claudeUsage } from './providers/claude'
 import type { ChatEvent, Provider, SendRequest, ThreadPatch } from '../shared/types'
@@ -74,8 +75,15 @@ function registerIpc() {
   // Providers
   ipcMain.handle('models:list', () => listModels())
   ipcMain.handle('auth:status', () => providerStatus())
-  ipcMain.handle('auth:login', (_e, p: Provider) => login(p))
+  ipcMain.handle('auth:login', (_e, p: Provider, customCmd?: string) => login(p, customCmd))
   ipcMain.handle('claude:usage', (_e, force?: boolean) => claudeUsage(force))
+
+  // Practice
+  ipcMain.handle('practice:list', (_e, courseId: string) => practice.list(courseId))
+  ipcMain.handle('practice:generate', (_e, req) => practice.generate(req))
+  ipcMain.handle('practice:mark', (_e, req) => practice.mark(req))
+  ipcMain.handle('practice:reveal', (_e, id: string) => practice.reveal(id))
+  ipcMain.handle('practice:delete', (_e, id: string) => practice.remove(id))
 
   // Library
   ipcMain.handle('library:get', async () => {
@@ -107,16 +115,38 @@ function registerIpc() {
 
 function buildMenu() {
   const send = (channel: string) => () => win?.webContents.send('menu', channel)
+  const isMac = process.platform === 'darwin'
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      { role: 'appMenu' },
+      ...(isMac
+        ? [
+            {
+              label: app.name,
+              submenu: [
+                { role: 'about' as const },
+                { type: 'separator' as const },
+                { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: send('settings') },
+                { type: 'separator' as const },
+                { role: 'services' as const },
+                { type: 'separator' as const },
+                { role: 'hide' as const },
+                { role: 'hideOthers' as const },
+                { role: 'unhide' as const },
+                { type: 'separator' as const },
+                { role: 'quit' as const }
+              ]
+            }
+          ]
+        : []),
       {
         label: 'File',
         submenu: [
           { label: 'New Chat', accelerator: 'CmdOrCtrl+N', click: send('new') },
           { label: 'Library', accelerator: 'CmdOrCtrl+L', click: send('library') },
-          { type: 'separator' },
-          { role: 'close' }
+          { label: 'Practice', accelerator: 'CmdOrCtrl+P', click: send('practice') },
+          ...(!isMac ? [{ label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: send('settings') }] : []),
+          { type: 'separator' as const },
+          { role: 'close' as const }
         ]
       },
       { role: 'editMenu' },

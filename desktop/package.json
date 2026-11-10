@@ -74,6 +74,7 @@
       "node_modules/@img/**",
       "node_modules/@napi-rs/**"
     ],
-    "icon": "build/icon.png"
+    "icon": "build/icon.png",
+    "electronDist": "node_modules/electron/dist"
   }
 }

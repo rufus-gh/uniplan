@@ -1,3 +1,4 @@
+import { cleanMath } from '../../shared/text'
 import type { Effort, LemmaApi, ModelOption, Provider, ThreadSummary, TutorMode } from '../../shared/types'
 
 declare global {
@@ -8,10 +9,81 @@ declare global {
 
 export const api = window.lemma
 
-export const PROVIDERS: Record<Provider, { name: string; account: string }> = {
-  claude: { name: 'Claude', account: 'Claude' },
-  openai: { name: 'OpenAI', account: 'ChatGPT' }
+export interface ProviderInfo {
+  name: string
+  account: string
+  defaultAuthCmd: string
+  desc: string
 }
+
+export const PROVIDERS: Record<Provider, ProviderInfo> = {
+  claude: {
+    name: 'Claude',
+    account: 'Claude Code',
+    defaultAuthCmd: 'claude auth login',
+    desc: 'Anthropic Claude models via Claude Code CLI'
+  },
+  openai: {
+    name: 'OpenAI',
+    account: 'Codex (ChatGPT)',
+    defaultAuthCmd: 'codex login',
+    desc: 'OpenAI ChatGPT models via Codex CLI'
+  },
+  gemini: {
+    name: 'Gemini',
+    account: 'Antigravity (agy)',
+    defaultAuthCmd: 'agy auth login',
+    desc: 'Google Gemini models through the Antigravity CLI'
+  },
+  opencode: {
+    name: 'OpenCode',
+    account: 'OpenCode',
+    defaultAuthCmd: 'opencode auth login',
+    desc: 'OpenCode CLI assistant and multi-provider models'
+  },
+  copilot: {
+    name: 'GitHub Copilot',
+    account: 'GitHub Copilot',
+    defaultAuthCmd: 'gh auth login',
+    desc: 'GitHub Copilot models via GitHub CLI / Copilot'
+  },
+  vibe: {
+    name: 'Mistral Vibe',
+    account: 'Mistral Vibe',
+    defaultAuthCmd: 'vibe --setup',
+    desc: 'Mistral models via the Vibe CLI'
+  },
+  ollama: {
+    name: 'Ollama',
+    account: 'Ollama (Local)',
+    defaultAuthCmd: 'ollama run llama3.3',
+    desc: 'Local open-source models running on your machine'
+  },
+  kilo: {
+    name: 'Kilo Code',
+    account: 'Kilo Code',
+    defaultAuthCmd: 'kilo auth login',
+    desc: 'Kilo Code CLI and universal gateway models'
+  },
+  openrouter: {
+    name: 'OpenRouter',
+    account: 'OpenRouter',
+    defaultAuthCmd: 'openrouter login',
+    desc: 'Unified API routing to 100+ frontier models'
+  }
+}
+
+export const ALL_PROVIDERS: Provider[] = [
+  'claude',
+  'openai',
+  'gemini',
+  'opencode',
+  'copilot',
+  'vibe',
+  'ollama',
+  'kilo',
+  'openrouter'
+]
 
 export const MODES: { id: TutorMode; label: string; desc: string }[] = [
   { id: 'explain', label: 'Explain', desc: 'Full worked solution' },
@@ -37,7 +109,11 @@ export function fmtReset(iso: string | null | undefined) {
   return new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })
 }
 
-export const providerOf = (id: string): Provider => (id.startsWith('openai:') ? 'openai' : 'claude')
+export const providerOf = (id: string): Provider => {
+  const [p] = id.split(':')
+  if (p in PROVIDERS) return p as Provider
+  return 'claude'
+}
 
 export function modelLabel(id: string, models: ModelOption[]) {
   return models.find((m) => m.id === id)?.label ?? id.split(':').pop() ?? id
@@ -86,3 +162,31 @@ export function errorText(e: unknown) {
   const s = e instanceof Error ? e.message : String(e)
   return s.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 }
+
+/** A title/label with LaTeX turned into readable symbols (e.g. "\\sqrt{2}" -> "√2"). */
+export const plainTitle = (t: string) => cleanMath(t)
+
+/**
+ * The selected text as Markdown: rendered maths (KaTeX) is swapped back for its TeX source so a quote
+ * doesn't contain every formula twice (KaTeX includes a hidden MathML copy).
+ */
+export function selectionMarkdown(range: Range): string {
+  const div = document.createElement('div')
+  div.appendChild(range.cloneContents())
+  const tex = (el: Element) => el.querySelector('annotation[encoding="application/x-tex"]')?.textContent
+  div.querySelectorAll('.katex-display').forEach((el) => {
+    const t = tex(el)
+    el.replaceWith(document.createTextNode(t ? `\n$$${t}$$\n` : (el.textContent ?? '')))
+  })
+  div.querySelectorAll('.katex').forEach((el) => {
+    const t = tex(el)
+    el.replaceWith(document.createTextNode(t ? `$${t}$` : (el.textContent ?? '')))
+  })
+  return (div.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+export const quoteMarkdown = (q: string) =>
+  q
+    .split('\n')
+    .map((l) => `> ${l}`.trimEnd())
+    .join('\n')

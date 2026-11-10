@@ -1,7 +1,7 @@
-import { memo, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { ChatMessage, Provider, ProviderStatus, Source } from '../../../shared/types'
 import { Markdown } from './Markdown'
-import { Alert, Book, Check, Chevron, Copy, ProviderLogo, Retry, Terminal } from './Icons'
+import { Alert, Book, Check, Chevron, Copy, Pencil, ProviderLogo, Retry, Terminal } from './Icons'
 import { api, PROVIDERS } from '../lib'
 
 export interface LiveReply {
@@ -14,7 +14,7 @@ export interface LiveReply {
 }
 
 /** Collapsed "N sources" pill; hovering (or focusing) it reveals the excerpts used. */
-function Sources({ sources }: { sources: Source[] }) {
+export function Sources({ sources }: { sources: Source[] }) {
   return (
     <div className="sources" tabIndex={0}>
       <span className="sources-trigger">
@@ -57,7 +57,132 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-const UserMessage = memo(function UserMessage({ m }: { m: ChatMessage }) {
+/** Cuts streamed text so half-written maths ($…, $$…) is never shown as raw LaTeX. */
+function safeCut(text: string, len: number) {
+  const s = text.slice(0, len)
+  const dd = [...s.matchAll(/\$\$/g)]
+  if (dd.length % 2) return s.slice(0, dd[dd.length - 1].index)
+  const singles = [...s.replace(/\$\$/g, '  ').matchAll(/(?<!\\)\$/g)]
+  if (singles.length % 2) return s.slice(0, singles[singles.length - 1].index)
+  return s
+}
+
+/**
+ * Reveals streamed text at a steady, adaptive pace instead of in network-sized bursts: it types at
+ * least ~90 chars/s and speeds up to clear any backlog within about 200 ms.
+ */
+function useSmoothText(full: string) {
+  const [shown, setShown] = useState(0)
+  const target = useRef(full)
+  target.current = full
+  const pos = useRef(0)
+  useEffect(() => {
+    let raf = 0
+    let last = 0
+    let painted = 0
+    let paintedAt = 0
+    const tick = (now: number) => {
+      const dt = Math.min((now - (last || now)) / 1000, 0.1)
+      last = now
+      const backlog = target.current.length - pos.current
+      if (backlog > 0) {
+        pos.current = Math.min(target.current.length, pos.current + Math.min(Math.max(backlog * 5, 90), 3000) * dt)
+        const len = Math.floor(pos.current)
+        if (len !== painted && (now - paintedAt > 32 || len >= target.current.length)) {
+          painted = len
+          paintedAt = now
+          setShown(len)
+        }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+  return safeCut(full, shown)
+}
+
+function LiveBody({ text, status }: { text: string; status?: string }) {
+  const shown = useSmoothText(text)
+  return (
+    <>
+      <div className="assistant-body">
+        <Markdown source={shown} />
+      </div>
+      {status && (
+        <div className="thinking" style={{ marginTop: 10 }}>
+          <span className="shimmer">{status}</span>
+        </div>
+      )}
+    </>
+  )
+}
+
+const UserMessage = memo(function UserMessage({
+  m,
+  canEdit,
+  onEdit
+}: {
+  m: ChatMessage
+  canEdit: boolean
+  onEdit(id: string, text: string): void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(m.content)
+  const ta = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (!editing) return
+    const el = ta.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 360)}px`
+  }, [editing])
+
+  const save = () => {
+    const text = draft.trim()
+    if (!text && !m.images?.length) return
+    setEditing(false)
+    if (text !== m.content.trim()) onEdit(m.id, text)
+  }
+
+  if (editing) {
+    return (
+      <div className="msg user">
+        <div className="bubble editing">
+          <textarea
+            ref={ta}
+            value={draft}
+            rows={1}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              e.target.style.height = 'auto'
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 360)}px`
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setEditing(false)
+              else if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                save()
+              }
+            }}
+          />
+          <div className="edit-actions">
+            <span className="edit-note">Replies after this message will be redone.</span>
+            <button className="btn sm" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+            <button className="btn sm primary" onClick={save}>
+              Save and resend
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="msg user">
       {m.images && m.images.length > 0 && (
@@ -73,6 +198,21 @@ const UserMessage = memo(function UserMessage({ m }: { m: ChatMessage }) {
           <Markdown source={m.content.replace(/\n/g, '  \n')} />
         </div>
       )}
+      <div className="msg-meta user-meta">
+        {m.content && <CopyButton text={m.content} />}
+        {canEdit && m.content && (
+          <button
+            className="icon-btn sm"
+            title="Edit message"
+            onClick={() => {
+              setDraft(m.content)
+              setEditing(true)
+            }}
+          >
+            <Pencil size={13} />
+          </button>
+        )}
+      </div>
     </div>
   )
 })
@@ -152,17 +292,21 @@ const AssistantMessage = memo(function AssistantMessage({
 export function Messages({
   messages,
   live,
-  onRetry
+  canEdit,
+  onRetry,
+  onEdit
 }: {
   messages: ChatMessage[]
   live: LiveReply | null
+  canEdit: boolean
   onRetry(): void
+  onEdit(id: string, text: string): void
 }) {
   return (
     <div className="column">
       {messages.map((m, i) =>
         m.role === 'user' ? (
-          <UserMessage key={m.id} m={m} />
+          <UserMessage key={m.id} m={m} canEdit={canEdit} onEdit={onEdit} />
         ) : (
           <AssistantMessage key={m.id} m={m} isLast={!live && i === messages.length - 1} onRetry={onRetry} />
         )
@@ -175,16 +319,7 @@ export function Messages({
             </div>
           )}
           {live.text ? (
-            <>
-              <div className={`assistant-body ${live.status ? '' : 'caret'}`}>
-                <Markdown source={live.text} />
-              </div>
-              {live.status && (
-                <div className="thinking" style={{ marginTop: 10 }}>
-                  <span className="shimmer">{live.status}</span>
-                </div>
-              )}
-            </>
+            <LiveBody key={live.messageId || 'live'} text={live.text} status={live.status} />
           ) : (
             <div className="thinking">
               <span className="shimmer">{live.status ?? (live.thinking ? 'Thinking…' : 'Working on it…')}</span>
@@ -196,35 +331,46 @@ export function Messages({
   )
 }
 
-export function AuthCard({ status, onRecheck }: { status: ProviderStatus; onRecheck(): void }) {
+export function AuthCard({
+  status,
+  onRecheck,
+  onOpenSettings
+}: {
+  status: ProviderStatus
+  onRecheck(): void
+  onOpenSettings?(): void
+}) {
   const [waiting, setWaiting] = useState(false)
-  const claude = status.provider === 'claude'
+  const info = PROVIDERS[status.provider]
+  const cmd = status.authCommand || info.defaultAuthCmd
+
   return (
     <div className="auth">
-      <ProviderLogo provider={status.provider} size={24} />
-      <h2>Connect your {PROVIDERS[status.provider].account} account</h2>
-      {claude ? (
-        <p>
-          Claude models run through Claude Code on this Mac, so chats use your Claude subscription. No API key
-          needed. Sign in once with <code>claude auth login</code>.
-        </p>
-      ) : (
-        <p>
-          OpenAI models run through Codex, using your ChatGPT account. No API key needed. Sign in once with your
-          ChatGPT account (the same login as the Codex app).
-        </p>
-      )}
+      <ProviderLogo provider={status.provider} size={28} />
+      <h2>Connect your {info.account} account</h2>
+      <p>{info.desc}. Run the authentication command in your terminal to sign in.</p>
+
+      <div className="auth-command-preview">
+        <Terminal size={13} />
+        <code>{cmd}</code>
+      </div>
+
       {status.error && <p className="auth-err">{status.error}</p>}
       <div className="row">
         {status.canLogin && (
           <button
             className="btn primary"
             onClick={async () => {
-              await api.openLogin(status.provider)
+              await api.openLogin(status.provider, cmd)
               setWaiting(true)
             }}
           >
-            <Terminal size={14} /> Sign in with {PROVIDERS[status.provider].account}
+            <Terminal size={14} /> Run in Terminal
+          </button>
+        )}
+        {onOpenSettings && (
+          <button className="btn" onClick={onOpenSettings}>
+            Open Settings
           </button>
         )}
         <button className="btn" onClick={onRecheck}>
@@ -249,7 +395,11 @@ export function Empty({ onPick }: { onPick(text: string): void }) {
       <p>Ask about a problem, paste a screenshot, or pick a starting point.</p>
       <div className="suggestions">
         {SUGGESTIONS.map((s) => (
-          <button key={s.k} className="suggestion" onClick={() => onPick(s.p)}>
+          <button
+            key={s.k}
+            className="suggestion"
+            onClick={() => onPick(s.p)}
+          >
             <span className="k">{s.k}</span>
             <span className="v">{s.v}</span>
           </button>

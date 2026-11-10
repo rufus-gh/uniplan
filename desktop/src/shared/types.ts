@@ -1,6 +1,15 @@
 // Types shared between the main process, preload and renderer.
 
-export type Provider = 'claude' | 'openai'
+export type Provider =
+  | 'claude'
+  | 'openai'
+  | 'gemini'
+  | 'opencode'
+  | 'copilot'
+  | 'vibe'
+  | 'ollama'
+  | 'kilo'
+  | 'openrouter'
 export type TutorMode = 'explain' | 'hint' | 'check'
 /** Claude reasoning effort (more = deeper thinking, slower, uses more of your plan). */
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
@@ -80,6 +89,12 @@ export interface ProviderStatus {
   error?: string
   /** Whether the app can open a sign-in flow for this provider. */
   canLogin: boolean
+  /** The terminal command used to sign in / authenticate. */
+  authCommand?: string
+  /** Detected path of the binary on this machine, if found. */
+  detectedPath?: string | null
+  /** Number of models available for this provider. */
+  modelCount?: number
 }
 
 export interface UsageWindow {
@@ -99,6 +114,42 @@ export interface ClaudeUsage {
   breakdown?: { name: string; percent: number }[]
   fetchedAt: number
   error?: string
+}
+
+export type PracticeStyle = 'mixed' | 'computation' | 'proof'
+export type PracticeLevel = 'easier' | 'standard' | 'harder'
+
+export interface PracticeRequest {
+  courseId: string
+  /** Free text ("line integrals", "Prop 3.12"); empty = a mix from across the notes. */
+  topic: string
+  style: PracticeStyle
+  level: PracticeLevel
+  /** ModelOption id */
+  model: string
+  effort: Effort
+}
+
+export interface PracticeAttempt {
+  id: string
+  courseId: string
+  topic: string
+  style: PracticeStyle
+  level: PracticeLevel
+  question: string
+  marks: number
+  hint: string
+  sources: Source[]
+  createdAt: number
+  status: 'open' | 'marked' | 'revealed'
+  model: string
+  /** Only present once the attempt is marked or revealed. */
+  solution?: string
+  markscheme?: string
+  answer?: string
+  hadImages?: boolean
+  score?: number
+  feedback?: string
 }
 
 export interface Course {
@@ -147,6 +198,8 @@ export interface SendRequest {
   images?: ImageAttachment[]
   /** Re-run the last user turn, replacing a failed/stopped reply. */
   retry?: boolean
+  /** Replace this earlier user message: it and everything after it is dropped, then `text` is sent. */
+  editId?: string
 }
 
 export type ThreadPatch = Partial<Pick<Thread, 'title' | 'model' | 'mode' | 'courseId' | 'effort'>>
@@ -162,8 +215,14 @@ export interface LemmaApi {
 
   listModels(): Promise<ModelOption[]>
   authStatus(): Promise<ProviderStatus[]>
-  openLogin(provider: Provider): Promise<void>
+  openLogin(provider: Provider, customCommand?: string): Promise<void>
   claudeUsage(force?: boolean): Promise<ClaudeUsage>
+
+  practiceList(courseId: string): Promise<PracticeAttempt[]>
+  practiceGenerate(req: PracticeRequest): Promise<PracticeAttempt>
+  practiceMark(req: { id: string; answer: string; images?: ImageAttachment[]; model: string; effort: Effort }): Promise<PracticeAttempt>
+  practiceReveal(id: string): Promise<PracticeAttempt>
+  practiceDelete(id: string): Promise<void>
 
   library(): Promise<LibraryState>
   createCourse(name: string): Promise<Course>
