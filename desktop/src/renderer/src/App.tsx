@@ -28,8 +28,6 @@ interface Defaults {
   mode: TutorMode
   courseId: string
   effort: Effort
-  /** Whether to include course-notes context in Claude chats (can be disabled to save usage). */
-  notesEnabled: boolean
 }
 
 function load<T>(key: string, fallback: T): T {
@@ -73,9 +71,8 @@ export function App() {
   const [collapsed, setCollapsed] = useState(() => loadScalar('sidebarCollapsed', false))
   const [theme, setTheme] = useState<ThemePref>(() => loadScalar('theme', 'system'))
   const [defaults, setDefaults] = useState<Defaults>(() => {
-    const d = load<Defaults>('defaults', { model: 'claude:claude-opus-5-5', mode: 'explain', courseId: '', effort: 'medium', notesEnabled: true })
-    return { ...d, model: LEGACY[d.model] ?? d.model, notesEnabled: d.notesEnabled ?? true }
-  })
+    const d = load<Defaults>('defaults', { model: 'claude:claude-opus-5-5', mode: 'explain', courseId: '', effort: 'medium' })
+    return { ...d, model: LEGACY[d.model] ?? d.model }})
   const [renaming, setRenaming] = useState(false)
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null)
   const [stuck, setStuckState] = useState(true)
@@ -572,16 +569,9 @@ export function App() {
   // ------------------------------------------------------------ render
   const provider = providerOf(model)
   const providerStatus = statuses?.find((s) => s.provider === provider)
-  // The provider is "offline" (not signed in / not running). We still allow the app to be used —
-  // the user can switch to a connected provider using the model picker in the Composer.
-  const providerOffline = !!providerStatus && !providerStatus.ok
-  // Block sending only when every known provider is disconnected (truly no way to chat).
-  const noProviders = !!statuses && statuses.every((s) => !s.ok)
   const hasMessages = !!thread && (thread.messages.length > 0 || !!activeLive)
+  const needsAuth = !!providerStatus && !providerStatus.ok
   const readyFiles = lib.files.filter((f) => f.status === 'ready').length
-
-  // The effective courseId passed to threads: empty when notes are disabled.
-  const effectiveCourseId = defaults.notesEnabled ? courseId : ''
 
   return (
     <div className="app">
@@ -605,7 +595,7 @@ export function App() {
         onSettings={() => setSettingsOpen(true)}
       />
       <main className="main">
-        <MemorableBackground active={!hasMessages && view === 'chat' && !providerOffline} />
+        <MemorableBackground active={!hasMessages && view === 'chat' && !needsAuth} />
         <header className={`header drag ${collapsed ? 'inset' : ''}`}>
           {collapsed && (
             <button className="icon-btn no-drag" title={`Show sidebar  ${mod}\\`} onClick={() => setCollapsed(false)}>
