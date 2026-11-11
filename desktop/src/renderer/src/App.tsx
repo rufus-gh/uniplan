@@ -10,7 +10,7 @@ import type {
   ThreadSummary,
   TutorMode
 } from '../../shared/types'
-import { api, errorText, MODES, mod, plainTitle, PROVIDERS, providerOf, quoteMarkdown, selectionMarkdown } from './lib'
+import { api, errorText, MODES, mod, plainTitle, playChime, PROVIDERS, providerOf, quoteMarkdown, selectionMarkdown } from './lib'
 import { Sidebar } from './components/Sidebar'
 import { Composer, type ComposerHandle } from './components/Composer'
 import { AuthCard, Empty, Messages, type LiveReply } from './components/Messages'
@@ -181,6 +181,7 @@ export function App() {
         })
         refreshList()
         if (e.type === 'error') checkAuth()
+        else if (!e.message.error && !e.message.stopped) playChime()
       }
     })
   }, [refreshList, checkAuth])

@@ -120,3 +120,33 @@ export const quoteMarkdown = (q: string) =>
     .split('\n')
     .map((l) => `> ${l}`.trimEnd())
     .join('\n')
+
+let audio: AudioContext | null = null
+
+/** A soft two-note chime, played when a reply finishes. Synthesised, so there is no audio file to ship. */
+export function playChime() {
+  try {
+    audio ??= new AudioContext()
+    const ctx = audio
+    if (ctx.state === 'suspended') void ctx.resume()
+    const t0 = ctx.currentTime + 0.02
+    // E6 then A6, each a sine with a fast attack and a long exponential decay.
+    ;[
+      { f: 1318.5, at: 0 },
+      { f: 1760, at: 0.11 }
+    ].forEach(({ f, at }) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = f
+      gain.gain.setValueAtTime(0.0001, t0 + at)
+      gain.gain.exponentialRampToValueAtTime(0.14, t0 + at + 0.012)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 0.9)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(t0 + at)
+      osc.stop(t0 + at + 0.95)
+    })
+  } catch {
+    /* audio unavailable: stay silent */
+  }
+}
