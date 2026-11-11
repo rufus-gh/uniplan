@@ -194,6 +194,38 @@ export function Sidebar(p: Props) {
           </div>
         )}
       </nav>
+      <div className="sidebar-foot">
+        {!p.statuses && (
+          <div className="acct">
+            <span className="grow">Checking accounts…</span>
+          </div>
+        )}
+        {p.statuses?.map((st) => {
+          const withUsage = st.provider === 'claude' && st.ok
+          const row = (
+            <button
+              key={st.provider}
+              className={`acct ${st.ok ? '' : 'signed-out'}`}
+              title={withUsage ? undefined : st.ok ? 'Signed in' : (st.error ?? 'Click to sign in')}
+              onClick={() => !st.ok && st.canLogin && p.onLogin(st.provider)}
+            >
+              <ProviderLogo provider={st.provider} size={12} />
+              <span className="grow">
+                {PROVIDERS[st.provider].account}
+                {st.ok ? (st.plan ? ` · ${st.plan}` : '') : ' · Not signed in'}
+              </span>
+              {withUsage && usage?.session && <span className="acct-pct">{Math.round(usage.session.percent)}%</span>}
+            </button>
+          )
+          if (!withUsage) return row
+          return (
+            <div key={st.provider} className="acct-wrap" onMouseEnter={() => loadUsage()} onFocus={() => loadUsage()}>
+              {row}
+              <UsageCard usage={usage} loading={usageLoading} onRefresh={() => loadUsage(true)} />
+            </div>
+          )
+        })}
+      </div>
     </aside>
   )
 }

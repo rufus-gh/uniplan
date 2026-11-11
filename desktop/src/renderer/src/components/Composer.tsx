@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react'
 import type { Course, Effort, ImageAttachment, ModelOption, Provider, ProviderStatus, TutorMode } from '../../../shared/types'
-import { ALL_PROVIDERS, EFFORTS, MODES, PROVIDERS, mod, plainTitle, providerOf, readImage } from '../lib'
+import { EFFORTS, MODES, PROVIDERS, mod, plainTitle, providerOf, readImage } from '../lib'
 import { ArrowUp, Book, Check, Chevron, EffortBars, ImageIcon, ProviderLogo, Square, X } from './Icons'
 
 export interface ComposerHandle {
@@ -189,10 +189,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
             }
           >
             {(close) =>
-              ALL_PROVIDERS.map((prov) => {
+              (['claude', 'openai'] as const).map((prov) => {
                 const st = status(prov)
                 const list = p.models.filter((m) => m.provider === prov)
-                if (!list.length && !st?.canLogin) return null
                 return (
                   <div key={prov} className="menu-group">
                     <div className="menu-head">

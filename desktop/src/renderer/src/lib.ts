@@ -12,26 +12,12 @@ export const api = window.lemma
 export interface ProviderInfo {
   name: string
   account: string
-  defaultAuthCmd: string
-  desc: string
 }
 
 export const PROVIDERS: Record<Provider, ProviderInfo> = {
-  claude: {
-    name: 'Claude',
-    account: 'Claude Code',
-    defaultAuthCmd: 'claude auth login',
-    desc: 'Anthropic Claude models via Claude Code CLI'
-  },
-  openai: {
-    name: 'OpenAI',
-    account: 'Codex (ChatGPT)',
-    defaultAuthCmd: 'codex login',
-    desc: 'OpenAI ChatGPT models via Codex CLI'
-  }
+  claude: { name: 'Claude', account: 'Claude' },
+  openai: { name: 'OpenAI', account: 'ChatGPT' }
 }
-
-export const ALL_PROVIDERS: Provider[] = ['claude', 'openai']
 
 export const MODES: { id: TutorMode; label: string; desc: string }[] = [
   { id: 'explain', label: 'Explain', desc: 'Full worked solution' },
@@ -57,11 +43,7 @@ export function fmtReset(iso: string | null | undefined) {
   return new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })
 }
 
-export const providerOf = (id: string): Provider => {
-  const [p] = id.split(':')
-  if (p in PROVIDERS) return p as Provider
-  return 'claude'
-}
+export const providerOf = (id: string): Provider => (id.startsWith('openai:') ? 'openai' : 'claude')
 
 export function modelLabel(id: string, models: ModelOption[]) {
   return models.find((m) => m.id === id)?.label ?? id.split(':').pop() ?? id

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type {
-  ClaudeUsage,
   Effort,
   ImageAttachment,
   LibraryState,
@@ -27,8 +26,6 @@ interface Defaults {
   mode: TutorMode
   courseId: string
   effort: Effort
-  /** Whether to include course-notes context in Claude chats (can be disabled to save usage). */
-  notesEnabled: boolean
 }
 
 function load<T>(key: string, fallback: T): T {
@@ -67,12 +64,11 @@ export function App() {
   const [view, setView] = useState<'chat' | 'library' | 'practice'>('chat')
   const [libCourse, setLibCourse] = useState<string | null>(null)
   const [palette, setPalette] = useState(false)
-  const [usage, setUsage] = useState<ClaudeUsage | null>(null)
   const [collapsed, setCollapsed] = useState(() => loadScalar('sidebarCollapsed', false))
   const [theme, setTheme] = useState<ThemePref>(() => loadScalar('theme', 'system'))
   const [defaults, setDefaults] = useState<Defaults>(() => {
-    const d = load<Defaults>('defaults', { model: 'claude:claude-opus-5-5', mode: 'explain', courseId: '', effort: 'medium', notesEnabled: true })
-    return { ...d, model: LEGACY[d.model] ?? d.model, notesEnabled: d.notesEnabled ?? true }
+    const d = load<Defaults>('defaults', { model: 'claude:claude-opus-5-5', mode: 'explain', courseId: '', effort: 'medium' })
+    return { ...d, model: LEGACY[d.model] ?? d.model }
   })
   const [renaming, setRenaming] = useState(false)
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null)
@@ -98,22 +94,7 @@ export function App() {
     setModels(m)
   }, [])
 
-  const loadUsage = useCallback(async (force = false) => {
-    try {
-      setUsage(await api.claudeUsage(force))
-    } catch {
-      /* ignore */
-    }
-  }, [])
 
-  // Load Claude usage once Claude is connected, and refresh every 5 minutes.
-  useEffect(() => {
-    const claudeOk = !!statuses?.find((s) => s.provider === 'claude')?.ok
-    if (!claudeOk) return
-    loadUsage()
-    const t = setInterval(() => loadUsage(), 5 * 60_000)
-    return () => clearInterval(t)
-  }, [statuses, loadUsage])
 
   useEffect(() => {
     refreshList()
@@ -374,7 +355,7 @@ export function App() {
   const setMode = useCallback((mode: TutorMode) => patchThread({ mode }), [patchThread])
   const setCourse = useCallback((courseId: string) => patchThread({ courseId }), [patchThread])
   const setEffort = useCallback((effort: Effort) => patchThread({ effort }), [patchThread])
-  const login = useCallback((p: Provider, cmd?: string) => api.openLogin(p, cmd), [])
+  const login = useCallback((p: Provider) => api.openLogin(p), [])
 
   const commitDelete = useCallback(() => {
     const p = pendingDelete.current
@@ -550,7 +531,7 @@ export function App() {
     }
     for (const s of statuses ?? []) {
       if (!s.ok && s.canLogin) {
-        const name = PROVIDERS[s.provider]?.name ?? s.provider
+        const name = s.provider === 'openai' ? 'ChatGPT' : 'Claude'
         cmds.push({ id: `login-${s.provider}`, section: 'Account', label: `Sign in to ${name}`, icon: <Terminal />, run: () => login(s.provider) })
       }
     }
@@ -563,16 +544,9 @@ export function App() {
   // ------------------------------------------------------------ render
   const provider = providerOf(model)
   const providerStatus = statuses?.find((s) => s.provider === provider)
-  // The provider is "offline" (not signed in / not running). We still allow the app to be used —
-  // the user can switch to a connected provider using the model picker in the Composer.
-  const providerOffline = !!providerStatus && !providerStatus.ok
-  // Block sending only when every known provider is disconnected (truly no way to chat).
-  const noProviders = !!statuses && statuses.every((s) => !s.ok)
   const hasMessages = !!thread && (thread.messages.length > 0 || !!activeLive)
+  const needsAuth = !!providerStatus && !providerStatus.ok
   const readyFiles = lib.files.filter((f) => f.status === 'ready').length
-
-  // The effective courseId passed to threads: empty when notes are disabled.
-  const effectiveCourseId = defaults.notesEnabled ? courseId : ''
 
   return (
     <div className="app">
@@ -595,7 +569,7 @@ export function App() {
         onPalette={() => setPalette(true)}
       />
       <main className="main">
-        <MemorableBackground active={!hasMessages && view === 'chat' && !providerOffline} />
+        <MemorableBackground active={!hasMessages && view === 'chat' && !needsAuth} />
         <header className={`header drag ${collapsed ? 'inset' : ''}`}>
           {collapsed && (
             <button className="icon-btn no-drag" title={`Show sidebar  ${mod}\\`} onClick={() => setCollapsed(false)}>
@@ -659,7 +633,7 @@ export function App() {
               >
                 {hasMessages ? (
                   <Messages messages={thread!.messages} live={activeLive} canEdit={!activeLive} onRetry={retry} onEdit={edit} />
-                ) : providerOffline ? (
+                ) : needsAuth ? (
                   <AuthCard status={providerStatus!} onRecheck={checkAuth} />
                 ) : (
                   <Empty onPick={(t) => composer.current?.setText(t)} />
@@ -689,7 +663,7 @@ export function App() {
               courseId={courseId}
               courses={lib.courses}
               streaming={!!activeLive}
-              disabled={providerOffline}
+              disabled={needsAuth}
               onModel={setModel}
               onMode={setMode}
               onEffort={setEffort}

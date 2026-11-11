@@ -1,17 +1,15 @@
 import type { ModelOption, Provider, ProviderStatus } from '../../shared/types'
 import { CLAUDE_MODELS, claudeLogin, claudeStatus, streamClaude } from './claude'
 import { openaiLogin, openaiModels, openaiStatus, streamOpenAI } from './openai'
-import { runInTerminal, type StreamArgs, type StreamResult } from './common'
+import type { StreamArgs, StreamResult } from './common'
 
 export type { StreamArgs, StreamResult }
 
-export async function listModels(): Promise<ModelOption[]> {
+export function listModels(): ModelOption[] {
   return [...CLAUDE_MODELS, ...openaiModels()]
 }
 
 export const DEFAULT_MODEL = CLAUDE_MODELS[0].id
-
-export const VALID_PROVIDERS: Provider[] = ['claude', 'openai']
 
 /** Maps legacy ids ("opus") and unknown ids onto a current ModelOption id. */
 export function normalizeModel(id: string | undefined): string {
@@ -28,18 +26,14 @@ export function normalizeModel(id: string | undefined): string {
 export function parseModel(id: string): { provider: Provider; model: string } {
   const norm = normalizeModel(id)
   const [provider, ...rest] = norm.split(':')
-  const validProvider = VALID_PROVIDERS.includes(provider as Provider) ? (provider as Provider) : 'claude'
-  return { provider: validProvider, model: rest.join(':') }
+  return { provider: (provider === 'openai' ? 'openai' : 'claude') as Provider, model: rest.join(':') }
 }
 
 export async function providerStatus(): Promise<ProviderStatus[]> {
   return Promise.all([claudeStatus(), openaiStatus()])
 }
 
-export async function login(p: Provider, customCmd?: string): Promise<void> {
-  if (customCmd?.trim()) {
-    return runInTerminal(customCmd.trim())
-  }
+export function login(p: Provider): Promise<void> {
   return p === 'openai' ? openaiLogin() : claudeLogin()
 }
 

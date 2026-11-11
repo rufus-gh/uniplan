@@ -80,12 +80,6 @@ export interface ProviderStatus {
   error?: string
   /** Whether the app can open a sign-in flow for this provider. */
   canLogin: boolean
-  /** The terminal command used to sign in / authenticate. */
-  authCommand?: string
-  /** Detected path of the binary on this machine, if found. */
-  detectedPath?: string | null
-  /** Number of models available for this provider. */
-  modelCount?: number
 }
 
 export interface UsageWindow {
@@ -206,7 +200,7 @@ export interface LemmaApi {
 
   listModels(): Promise<ModelOption[]>
   authStatus(): Promise<ProviderStatus[]>
-  openLogin(provider: Provider, customCommand?: string): Promise<void>
+  openLogin(provider: Provider): Promise<void>
   claudeUsage(force?: boolean): Promise<ClaudeUsage>
 
   practiceList(courseId: string): Promise<PracticeAttempt[]>

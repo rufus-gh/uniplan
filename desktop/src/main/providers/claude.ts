@@ -75,9 +75,7 @@ export async function claudeStatus(): Promise<ProviderStatus> {
     return {
       provider: 'claude',
       ok: false,
-      canLogin: true,
-      authCommand: 'claude auth login',
-      detectedPath: null,
+      canLogin: false,
       error: 'Install Claude Code: curl -fsSL https://claude.ai/install.sh | bash'
     }
   }
@@ -90,9 +88,9 @@ export async function claudeStatus(): Promise<ProviderStatus> {
   try {
     const s = JSON.parse(out) as { loggedIn?: boolean; subscriptionType?: string }
     const plan = s.subscriptionType ? s.subscriptionType[0].toUpperCase() + s.subscriptionType.slice(1) : undefined
-    return { provider: 'claude', ok: !!s.loggedIn, plan, canLogin: true, authCommand: 'claude auth login', detectedPath: cli }
+    return { provider: 'claude', ok: !!s.loggedIn, plan, canLogin: true }
   } catch {
-    return { provider: 'claude', ok: false, canLogin: true, authCommand: 'claude auth login', detectedPath: cli, error: 'Could not read Claude sign-in status.' }
+    return { provider: 'claude', ok: false, canLogin: true, error: 'Could not read Claude sign-in status.' }
   }
 }
 

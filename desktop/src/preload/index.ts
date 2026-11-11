@@ -20,7 +20,7 @@ const api: LemmaApi = {
 
   listModels: () => ipcRenderer.invoke('models:list'),
   authStatus: () => ipcRenderer.invoke('auth:status'),
-  openLogin: (p, cmd) => ipcRenderer.invoke('auth:login', p, cmd),
+  openLogin: (p) => ipcRenderer.invoke('auth:login', p),
   claudeUsage: (force) => ipcRenderer.invoke('claude:usage', force),
 
   practiceList: (courseId) => ipcRenderer.invoke('practice:list', courseId),

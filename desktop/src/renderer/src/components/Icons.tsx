@@ -142,14 +142,8 @@ export const Gear = (p: P) => (
   </Svg>
 )
 
-export const ProviderLogo = ({ provider, size = 14 }: { provider: Provider; size?: number }) => {
-  switch (provider) {
-    case 'claude':
-      return <ClaudeLogo size={size} />
-    case 'openai':
-      return <OpenAILogo size={size} />
-  }
-}
+export const ProviderLogo = ({ provider, size }: { provider: Provider; size?: number }) =>
+  provider === 'openai' ? <OpenAILogo size={size} /> : <ClaudeLogo size={size} />
 
 export const Book = (p: P) => (
   <Svg {...p}>

@@ -331,39 +331,35 @@ export function Messages({
   )
 }
 
-export function AuthCard({
-  status,
-  onRecheck
-}: {
-  status: ProviderStatus
-  onRecheck(): void
-}) {
+export function AuthCard({ status, onRecheck }: { status: ProviderStatus; onRecheck(): void }) {
   const [waiting, setWaiting] = useState(false)
-  const info = PROVIDERS[status.provider]
-  const cmd = status.authCommand || info.defaultAuthCmd
-
+  const claude = status.provider === 'claude'
   return (
     <div className="auth">
-      <ProviderLogo provider={status.provider} size={28} />
-      <h2>Connect your {info.account} account</h2>
-      <p>{info.desc}. Run the authentication command in your terminal to sign in.</p>
-
-      <div className="auth-command-preview">
-        <Terminal size={13} />
-        <code>{cmd}</code>
-      </div>
-
+      <ProviderLogo provider={status.provider} size={24} />
+      <h2>Connect your {PROVIDERS[status.provider].account} account</h2>
+      {claude ? (
+        <p>
+          Claude models run through Claude Code on this Mac, so chats use your Claude subscription. No API key
+          needed. Sign in once with <code>claude auth login</code>.
+        </p>
+      ) : (
+        <p>
+          OpenAI models run through Codex, using your ChatGPT account. No API key needed. Sign in once with your
+          ChatGPT account (the same login as the Codex app).
+        </p>
+      )}
       {status.error && <p className="auth-err">{status.error}</p>}
       <div className="row">
         {status.canLogin && (
           <button
             className="btn primary"
             onClick={async () => {
-              await api.openLogin(status.provider, cmd)
+              await api.openLogin(status.provider)
               setWaiting(true)
             }}
           >
-            <Terminal size={14} /> Run in Terminal
+            <Terminal size={14} /> Sign in with {PROVIDERS[status.provider].account}
           </button>
         )}
         <button className="btn" onClick={onRecheck}>

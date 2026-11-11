@@ -75,7 +75,7 @@ function registerIpc() {
   // Providers
   ipcMain.handle('models:list', () => listModels())
   ipcMain.handle('auth:status', () => providerStatus())
-  ipcMain.handle('auth:login', (_e, p: Provider, customCmd?: string) => login(p, customCmd))
+  ipcMain.handle('auth:login', (_e, p: Provider) => login(p))
   ipcMain.handle('claude:usage', (_e, force?: boolean) => claudeUsage(force))
 
   // Practice
@@ -115,27 +115,9 @@ function registerIpc() {
 
 function buildMenu() {
   const send = (channel: string) => () => win?.webContents.send('menu', channel)
-  const isMac = process.platform === 'darwin'
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      ...(isMac
-        ? [
-            {
-              label: app.name,
-              submenu: [
-                { role: 'about' as const },
-                { type: 'separator' as const },
-                { role: 'services' as const },
-                { type: 'separator' as const },
-                { role: 'hide' as const },
-                { role: 'hideOthers' as const },
-                { role: 'unhide' as const },
-                { type: 'separator' as const },
-                { role: 'quit' as const }
-              ]
-            }
-          ]
-        : []),
+      { role: 'appMenu' as const },
       {
         label: 'File',
         submenu: [
