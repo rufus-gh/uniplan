@@ -16,11 +16,10 @@ import { Sidebar } from './components/Sidebar'
 import { Composer, type ComposerHandle } from './components/Composer'
 import { AuthCard, Empty, Messages, type LiveReply } from './components/Messages'
 import { CommandPalette, type Command } from './components/CommandPalette'
-import { SettingsModal } from './components/SettingsModal'
 import { Library } from './components/Library'
 import { Practice } from './components/Practice'
 import { MemorableBackground } from './components/MemorableBackground'
-import { ArrowDown, Book, Bolt, Chat, Gear, Pencil, Target, Plus, ProviderLogo, Sidebar as SidebarIcon, Sun, Terminal, Trash } from './components/Icons'
+import { ArrowDown, Book, Bolt, Chat, Pencil, Target, Plus, ProviderLogo, Sidebar as SidebarIcon, Sun, Terminal, Trash } from './components/Icons'
 
 type ThemePref = 'system' | 'dark' | 'light'
 interface Defaults {
@@ -68,7 +67,6 @@ export function App() {
   const [view, setView] = useState<'chat' | 'library' | 'practice'>('chat')
   const [libCourse, setLibCourse] = useState<string | null>(null)
   const [palette, setPalette] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [usage, setUsage] = useState<ClaudeUsage | null>(null)
   const [collapsed, setCollapsed] = useState(() => loadScalar('sidebarCollapsed', false))
   const [theme, setTheme] = useState<ThemePref>(() => loadScalar('theme', 'system'))
@@ -449,7 +447,6 @@ export function App() {
         else if (a === 'sidebar') setCollapsed((v) => !v)
         else if (a === 'library') setView((v) => (v === 'library' ? 'chat' : 'library'))
         else if (a === 'practice') setView((v) => (v === 'practice' ? 'chat' : 'practice'))
-        else if (a === 'settings') setSettingsOpen(true)
       }),
     [newChat]
   )
@@ -461,11 +458,6 @@ export function App() {
       if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         moveThread(e.key === 'ArrowUp' ? -1 : 1)
-        return
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
-        e.preventDefault()
-        setSettingsOpen((v) => !v)
         return
       }
       if (e.key === 'Escape' && thread && live[thread.id]) {
@@ -493,7 +485,6 @@ export function App() {
   const commands = useMemo<Command[]>(() => {
     const cmds: Command[] = [
       { id: 'new', section: 'Actions', label: 'New chat', icon: <Plus />, hint: <kbd>{mod}N</kbd>, run: newChat },
-      { id: 'settings', section: 'Actions', label: 'Settings & Providers', icon: <Gear />, hint: <kbd>{mod},</kbd>, run: () => setSettingsOpen(true) },
       { id: 'practice', section: 'Actions', label: 'Practice questions', icon: <Target />, hint: <kbd>{mod}P</kbd>, keywords: 'exam quiz test mark revise', run: openPractice },
       { id: 'library', section: 'Actions', label: 'Open library', icon: <Book />, hint: <kbd>{mod}L</kbd>, keywords: 'notes transcripts upload', run: openLibrary },
       {
@@ -560,7 +551,7 @@ export function App() {
     for (const s of statuses ?? []) {
       if (!s.ok && s.canLogin) {
         const name = PROVIDERS[s.provider]?.name ?? s.provider
-        cmds.push({ id: `login-${s.provider}`, section: 'Account', label: `Sign in to ${name}`, icon: <Terminal />, run: () => setSettingsOpen(true) })
+        cmds.push({ id: `login-${s.provider}`, section: 'Account', label: `Sign in to ${name}`, icon: <Terminal />, run: () => login(s.provider) })
       }
     }
     for (const t of threads) {
@@ -602,7 +593,6 @@ export function App() {
         onDelete={remove}
         onToggle={() => setCollapsed((v) => !v)}
         onPalette={() => setPalette(true)}
-        onSettings={() => setSettingsOpen(true)}
       />
       <main className="main">
         <MemorableBackground active={!hasMessages && view === 'chat' && !providerOffline} />
@@ -669,8 +659,8 @@ export function App() {
               >
                 {hasMessages ? (
                   <Messages messages={thread!.messages} live={activeLive} canEdit={!activeLive} onRetry={retry} onEdit={edit} />
-                ) : needsAuth ? (
-                  <AuthCard status={providerStatus!} onRecheck={checkAuth} onOpenSettings={() => setSettingsOpen(true)} />
+                ) : providerOffline ? (
+                  <AuthCard status={providerStatus!} onRecheck={checkAuth} />
                 ) : (
                   <Empty onPick={(t) => composer.current?.setText(t)} />
                 )}
@@ -699,7 +689,7 @@ export function App() {
               courseId={courseId}
               courses={lib.courses}
               streaming={!!activeLive}
-              disabled={needsAuth}
+              disabled={providerOffline}
               onModel={setModel}
               onMode={setMode}
               onEffort={setEffort}
@@ -732,20 +722,6 @@ export function App() {
       )}
 
       {palette && <CommandPalette commands={commands} onClose={() => setPalette(false)} />}
-      <SettingsModal
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        statuses={statuses}
-        models={models}
-        defaults={defaults}
-        onUpdateDefaults={(patch) => setDefaults((d) => ({ ...d, ...patch }))}
-        theme={theme}
-        onTheme={setTheme}
-        onLogin={login}
-        onRecheckAuth={checkAuth}
-        claudeUsage={usage}
-        onRefreshUsage={() => loadUsage(true)}
-      />
       {toast && (
         <div className="toast">
           {toast.text}

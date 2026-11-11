@@ -28,62 +28,10 @@ export const PROVIDERS: Record<Provider, ProviderInfo> = {
     account: 'Codex (ChatGPT)',
     defaultAuthCmd: 'codex login',
     desc: 'OpenAI ChatGPT models via Codex CLI'
-  },
-  gemini: {
-    name: 'Gemini',
-    account: 'Antigravity (agy)',
-    defaultAuthCmd: 'agy auth login',
-    desc: 'Google Gemini models through the Antigravity CLI'
-  },
-  opencode: {
-    name: 'OpenCode',
-    account: 'OpenCode',
-    defaultAuthCmd: 'opencode auth login',
-    desc: 'OpenCode CLI assistant and multi-provider models'
-  },
-  copilot: {
-    name: 'GitHub Copilot',
-    account: 'GitHub Copilot',
-    defaultAuthCmd: 'gh auth login',
-    desc: 'GitHub Copilot models via GitHub CLI / Copilot'
-  },
-  vibe: {
-    name: 'Mistral Vibe',
-    account: 'Mistral Vibe',
-    defaultAuthCmd: 'vibe --setup',
-    desc: 'Mistral models via the Vibe CLI'
-  },
-  ollama: {
-    name: 'Ollama',
-    account: 'Ollama (Local)',
-    defaultAuthCmd: 'ollama run llama3.3',
-    desc: 'Local open-source models running on your machine'
-  },
-  kilo: {
-    name: 'Kilo Code',
-    account: 'Kilo Code',
-    defaultAuthCmd: 'kilo auth login',
-    desc: 'Kilo Code CLI and universal gateway models'
-  },
-  openrouter: {
-    name: 'OpenRouter',
-    account: 'OpenRouter',
-    defaultAuthCmd: 'openrouter login',
-    desc: 'Unified API routing to 100+ frontier models'
   }
 }
 
-export const ALL_PROVIDERS: Provider[] = [
-  'claude',
-  'openai',
-  'gemini',
-  'opencode',
-  'copilot',
-  'vibe',
-  'ollama',
-  'kilo',
-  'openrouter'
-]
+export const ALL_PROVIDERS: Provider[] = ['claude', 'openai']
 
 export const MODES: { id: TutorMode; label: string; desc: string }[] = [
   { id: 'explain', label: 'Explain', desc: 'Full worked solution' },

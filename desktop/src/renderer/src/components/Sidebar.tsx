@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ClaudeUsage, ProviderStatus, ThreadSummary, UsageWindow } from '../../../shared/types'
 import { api, fmtReset, groupThreads, mod, plainTitle, PROVIDERS } from '../lib'
-import { Book, Gear, LemmaMark, Plus, ProviderLogo, Refresh, Search, Sidebar as SidebarIcon, Target, Trash } from './Icons'
+import { Book, LemmaMark, Plus, ProviderLogo, Refresh, Search, Sidebar as SidebarIcon, Target, Trash } from './Icons'
 
 interface Props {
   threads: ThreadSummary[]
@@ -20,7 +20,6 @@ interface Props {
   onDelete(id: string): void
   onToggle(): void
   onPalette(): void
-  onSettings(): void
 }
 
 function Meter({ label, w }: { label: string; w: UsageWindow }) {
@@ -195,25 +194,6 @@ export function Sidebar(p: Props) {
           </div>
         )}
       </nav>
-
-      <div className="sidebar-foot">
-        <button
-          className="nav-item settings-item"
-          onClick={p.onSettings}
-          title={`Settings & AI Providers  ${mod},`}
-        >
-          <Gear size={15} />
-          <span className="grow">Settings</span>
-          <span className="nav-end">
-            {(p.statuses?.filter((s) => s.ok).length ?? 0) > 0 ? (
-              <span className="count ok">{p.statuses?.filter((s) => s.ok).length} active</span>
-            ) : (
-              p.statuses && <span className="count warn">0 active</span>
-            )}
-            <kbd>{mod},</kbd>
-          </span>
-        </button>
-      </div>
     </aside>
   )
 }

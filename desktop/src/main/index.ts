@@ -125,8 +125,6 @@ function buildMenu() {
               submenu: [
                 { role: 'about' as const },
                 { type: 'separator' as const },
-                { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: send('settings') },
-                { type: 'separator' as const },
                 { role: 'services' as const },
                 { type: 'separator' as const },
                 { role: 'hide' as const },
@@ -144,7 +142,6 @@ function buildMenu() {
           { label: 'New Chat', accelerator: 'CmdOrCtrl+N', click: send('new') },
           { label: 'Library', accelerator: 'CmdOrCtrl+L', click: send('library') },
           { label: 'Practice', accelerator: 'CmdOrCtrl+P', click: send('practice') },
-          ...(!isMac ? [{ label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: send('settings') }] : []),
           { type: 'separator' as const },
           { role: 'close' as const }
         ]

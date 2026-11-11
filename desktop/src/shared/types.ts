@@ -1,15 +1,6 @@
 // Types shared between the main process, preload and renderer.
 
-export type Provider =
-  | 'claude'
-  | 'openai'
-  | 'gemini'
-  | 'opencode'
-  | 'copilot'
-  | 'vibe'
-  | 'ollama'
-  | 'kilo'
-  | 'openrouter'
+export type Provider = 'claude' | 'openai'
 export type TutorMode = 'explain' | 'hint' | 'check'
 /** Claude reasoning effort (more = deeper thinking, slower, uses more of your plan). */
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'

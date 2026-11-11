@@ -333,12 +333,10 @@ export function Messages({
 
 export function AuthCard({
   status,
-  onRecheck,
-  onOpenSettings
+  onRecheck
 }: {
   status: ProviderStatus
   onRecheck(): void
-  onOpenSettings?(): void
 }) {
   const [waiting, setWaiting] = useState(false)
   const info = PROVIDERS[status.provider]
@@ -366,11 +364,6 @@ export function AuthCard({
             }}
           >
             <Terminal size={14} /> Run in Terminal
-          </button>
-        )}
-        {onOpenSettings && (
-          <button className="btn" onClick={onOpenSettings}>
-            Open Settings
           </button>
         )}
         <button className="btn" onClick={onRecheck}>
