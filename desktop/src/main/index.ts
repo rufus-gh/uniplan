@@ -98,13 +98,13 @@ function registerIpc() {
   ipcMain.handle('settings:saveKey', async (_e, key: string) => {
     const k = typeof key === 'string' ? key.trim() : ''
     if (!k) {
-      settings.setApiKey('')
+      await settings.setApiKey('')
       library.resumeEmbedding()
       return { ok: true, settings: settings.publicSettings() }
     }
     const test = await testQwenKey(k)
     if (!test.ok) return { ...test, settings: settings.publicSettings() }
-    settings.setApiKey(k)
+    await settings.setApiKey(k)
     library.resumeEmbedding()
     return { ...test, settings: settings.publicSettings() }
   })
@@ -176,7 +176,7 @@ function buildMenu() {
   )
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   app.setName('Lemma')
   if (!app.isPackaged) {
     // Packaged builds get the icon from the .icns; in dev, set the Dock icon by hand.
@@ -184,6 +184,7 @@ app.whenReady().then(() => {
     // Expose the page to accessibility clients (UI automation, VoiceOver testing).
     app.setAccessibilitySupportEnabled(true)
   }
+  await settings.initSettings() // the saved API key must be readable before the library starts embedding
   registerIpc()
   buildMenu()
   createWindow()

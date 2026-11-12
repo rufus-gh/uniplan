@@ -7,8 +7,9 @@ import type { AppSettings, EmbedderKind } from '../shared/types'
  * App settings, stored in <userData>/settings.json.
  *
  * The Hack Club AI key is encrypted with Electron's safeStorage (the macOS
- * Keychain). If encryption isn't available it is kept in memory for this
- * session only, never written to disk in plain text. LEMMA_HACKCLUB_KEY in the
+ * Keychain) and decrypted once at startup into memory. If encryption isn't
+ * available it is kept in memory for this session only, never written to disk
+ * in plain text. LEMMA_HACKCLUB_KEY in the
  * environment is used when no key has been saved.
  */
 
@@ -21,7 +22,6 @@ interface Stored {
 const file = () => join(app.getPath('userData'), 'settings.json')
 
 let cache: Stored | null = null
-let sessionKey: string | null = null // used only when encryption is unavailable
 
 function read(): Stored {
   if (cache) return cache
@@ -42,26 +42,29 @@ function write() {
   renameSync(tmp, p)
 }
 
-const canEncrypt = () => {
+let encAvailable = false
+let keyCache: string | null = null // the decrypted key (or a session-only one); loaded by initSettings()
+
+/** Call once the app is ready, before anything needs the key. */
+export async function initSettings() {
   try {
-    return safeStorage.isEncryptionAvailable()
+    encAvailable = await safeStorage.isAsyncEncryptionAvailable()
   } catch {
-    return false
+    encAvailable = false
+  }
+  const enc = read().keyEnc
+  if (enc && encAvailable) {
+    try {
+      keyCache = (await safeStorage.decryptStringAsync(Buffer.from(enc, 'base64'))).result
+    } catch {
+      /* unreadable (e.g. moved to another Mac): treat as no key */
+    }
   }
 }
 
 /** The Hack Club AI key, or null if there isn't one. Main process only. */
 export function getApiKey(): string | null {
-  if (sessionKey) return sessionKey
-  const enc = read().keyEnc
-  if (enc && canEncrypt()) {
-    try {
-      return safeStorage.decryptString(Buffer.from(enc, 'base64'))
-    } catch {
-      /* unreadable (e.g. moved to another Mac) */
-    }
-  }
-  return process.env.LEMMA_HACKCLUB_KEY?.trim() || null
+  return keyCache || process.env.LEMMA_HACKCLUB_KEY?.trim() || null
 }
 
 export function getEmbedderKind(): EmbedderKind {
@@ -74,19 +77,17 @@ export function setEmbedderKind(kind: EmbedderKind) {
 }
 
 /** Saves (or, with an empty string, removes) the key. */
-export function setApiKey(key: string) {
+export async function setApiKey(key: string) {
   const s = read()
   const k = key.trim()
-  sessionKey = null
   delete s.keyEnc
-  if (k) {
-    if (canEncrypt()) s.keyEnc = safeStorage.encryptString(k).toString('base64')
-    else sessionKey = k
-  }
+  keyCache = k || null
+  // Encrypted at rest when possible; otherwise it only lives in memory for this session.
+  if (k && encAvailable) s.keyEnc = (await safeStorage.encryptStringAsync(k)).toString('base64')
   write()
 }
 
 /** What the renderer is allowed to see: never the key itself. */
 export function publicSettings(): AppSettings {
-  return { embedder: read().embedder, hasKey: !!getApiKey(), keySecure: canEncrypt() }
+  return { embedder: read().embedder, hasKey: !!getApiKey(), keySecure: encAvailable }
 }
