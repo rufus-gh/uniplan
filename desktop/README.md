@@ -33,7 +33,10 @@ npm run dist          # build dist/mac-arm64/Lemma.app
 - **Numbered references** ("prop 3.12", "Theorem 2.4", "Def 1.5") are looked up exactly. Each numbered statement starts
   its own passage, and the next passage (usually the proof) comes with it.
 - **Everything else** uses hybrid search: BM25 keyword ranking (with maths symbols spelled out, so "epsilon" matches
-  `ε`) plus local `bge-small` embeddings (ONNX, on-device, ~33 MB downloaded once), fused by reciprocal rank.
+  `ε`) plus semantic embeddings, fused by reciprocal rank. Choose the embedding model in **Settings** (⌘,): local
+  `bge-small` (ONNX, on-device, ~33 MB downloaded once, works offline) or **Qwen3 Embedding 8B** through Hack Club AI
+  (needs internet and an API key; on a real course it found the right passage first 63% of the time versus 37%). Each
+  model's vectors are stored separately, so switching never re-processes your notes.
 - **Query rewriting:** Haiku rewrites the question into textbook-style search queries (adds ~3 s). Transcripts are
   down-weighted and capped unless you ask about the lectures, repeated boilerplate is dropped, and near-duplicates merge.
 - **Claude can search again** with a `search_notes` tool when the automatic excerpts miss something.

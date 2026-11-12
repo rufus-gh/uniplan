@@ -77,11 +77,17 @@ export function Library({ lib, selected, onSelect, onToast }: Props) {
 
   const embedderNote =
     lib.embedder === 'ready'
-      ? 'Semantic + keyword search, on this Mac'
+      ? lib.embedderKind === 'qwen'
+        ? lib.embedPending > 0
+          ? `Indexing with Qwen3 8B… ${lib.embedPending.toLocaleString()} passages left`
+          : 'Semantic + keyword search (Qwen3 8B)'
+        : 'Semantic + keyword search, on this Mac'
       : lib.embedder === 'loading'
         ? 'Preparing local search model… (first time downloads ~33 MB)'
         : lib.embedder === 'unavailable'
-          ? 'Keyword search only (semantic model couldn’t load)'
+          ? lib.embedderKind === 'qwen'
+            ? 'Keyword search only (check Qwen3 in Settings)'
+            : 'Keyword search only (semantic model couldn’t load)'
           : 'Search runs entirely on this Mac'
 
   if (!lib.courses.length) {

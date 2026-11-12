@@ -40,6 +40,10 @@ const api: LemmaApi = {
   search: (q, courseId) => ipcRenderer.invoke('library:search', q, courseId),
   pathForFile: (file) => webUtils.getPathForFile(file),
 
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  setEmbedder: (kind) => ipcRenderer.invoke('settings:setEmbedder', kind),
+  saveApiKey: (key) => ipcRenderer.invoke('settings:saveKey', key),
+
   onChatEvent: (cb) => on<ChatEvent>('chat:event', cb),
   onLibrary: (cb) => on<LibraryState>('library:changed', cb),
   onMenu: (cb) => on<string>('menu', cb),

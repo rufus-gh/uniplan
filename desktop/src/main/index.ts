@@ -4,9 +4,11 @@ import * as store from './store'
 import * as library from './rag/library'
 import * as chat from './chat'
 import * as practice from './practice'
+import * as settings from './settings'
+import { testQwenKey } from './rag/embed'
 import { listModels, login, normalizeModel, providerStatus } from './providers'
 import { claudeUsage } from './providers/claude'
-import type { ChatEvent, Provider, SendRequest, ThreadPatch } from '../shared/types'
+import type { ChatEvent, EmbedderKind, Provider, SendRequest, ThreadPatch } from '../shared/types'
 
 let win: BrowserWindow | null = null
 
@@ -85,6 +87,28 @@ function registerIpc() {
   ipcMain.handle('practice:reveal', (_e, id: string) => practice.reveal(id))
   ipcMain.handle('practice:delete', (_e, id: string) => practice.remove(id))
 
+  // Settings
+  ipcMain.handle('settings:get', () => settings.publicSettings())
+  ipcMain.handle('settings:setEmbedder', async (_e, kind: EmbedderKind) => {
+    if (kind !== 'local' && kind !== 'qwen') return settings.publicSettings()
+    settings.setEmbedderKind(kind)
+    await library.switchEmbedder(kind)
+    return settings.publicSettings()
+  })
+  ipcMain.handle('settings:saveKey', async (_e, key: string) => {
+    const k = typeof key === 'string' ? key.trim() : ''
+    if (!k) {
+      settings.setApiKey('')
+      library.resumeEmbedding()
+      return { ok: true, settings: settings.publicSettings() }
+    }
+    const test = await testQwenKey(k)
+    if (!test.ok) return { ...test, settings: settings.publicSettings() }
+    settings.setApiKey(k)
+    library.resumeEmbedding()
+    return { ...test, settings: settings.publicSettings() }
+  })
+
   // Library
   ipcMain.handle('library:get', async () => {
     await library.load()
@@ -124,6 +148,8 @@ function buildMenu() {
           { label: 'New Chat', accelerator: 'CmdOrCtrl+N', click: send('new') },
           { label: 'Library', accelerator: 'CmdOrCtrl+L', click: send('library') },
           { label: 'Practice', accelerator: 'CmdOrCtrl+P', click: send('practice') },
+          { type: 'separator' as const },
+          { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: send('settings') },
           { type: 'separator' as const },
           { role: 'close' as const }
         ]

@@ -3,20 +3,23 @@ import { copyFile, readdir, readFile, rm, stat, writeFile, rename, mkdir } from 
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { Course, LibraryFile, LibraryState, SearchHit } from '../../shared/types'
+import type { Course, EmbedderKind, LibraryFile, LibraryState, SearchHit } from '../../shared/types'
 import { chunk, kindOf, parseFile, SUPPORTED } from './parse'
-import { embed, embedderState, loadEmbedder, onEmbedderState } from './embed'
+import { activeKind, CUTOFFS, embed, embedError, embedGeneration, embedderState, initEmbedder, loadEmbedder, onEmbedderState, selectEmbedder } from './embed'
 import { findLabels, labelMatches, queryLabels, spellSymbols, stripLabels } from './labels'
 
 /*
  * The course library: lecture notes and transcripts the user adds, indexed for
- * hybrid retrieval (BM25 keyword ranking + local semantic embeddings, fused
- * with reciprocal-rank fusion).
+ * hybrid retrieval (BM25 keyword ranking + semantic embeddings, fused with
+ * reciprocal-rank fusion). The embedding model is switchable (see embed.ts);
+ * each model's vectors are stored separately so switching back and forth
+ * never re-embeds anything.
  *
  * Layout under <userData>/library:
  *   library.json          courses + file metadata
  *   files/<id><ext>       a copy of each original file
- *   chunks/<id>.json      extracted chunks (+ base64 Float32 vectors)
+ *   chunks/<id>.json      extracted chunks (+ base64 Float32 vectors from the local model)
+ *   chunks/<id>.qwen.json base64 Float32 vectors from Qwen3 (same chunk order)
  */
 
 interface ChunkRec {
@@ -39,16 +42,20 @@ interface ChunkRec {
 /** Bump when chunking/analysis changes; existing files are then re-indexed in the background. */
 const INDEX_VERSION = 3
 
-interface StoredChunks {
-  chunks: { text: string; loc?: string }[]
+interface StoredVectors {
   dims?: number
   vectors?: string
+}
+
+interface StoredChunks extends StoredVectors {
+  chunks: { text: string; loc?: string }[]
 }
 
 const root = () => join(app.getPath('userData'), 'library')
 const metaPath = () => join(root(), 'library.json')
 const filePath = (f: LibraryFile) => join(root(), 'files', `${f.id}${extname(f.name).toLowerCase()}`)
 const chunkPath = (id: string) => join(root(), 'chunks', `${id}.json`)
+const qwenPath = (id: string) => join(root(), 'chunks', `${id}.qwen.json`)
 
 let courses: Course[] = []
 let files: LibraryFile[] = []
@@ -63,7 +70,9 @@ export function onLibraryChange(cb: (s: LibraryState) => void) {
 }
 
 export function state(): LibraryState {
-  return { courses, files, embedder: embedderState }
+  let pending = 0
+  for (const recs of index.values()) for (const r of recs) if (!r.vec) pending++
+  return { courses, files, embedder: embedderState, embedderKind: activeKind(), embedPending: pending, embedError: embedError() }
 }
 
 function changed() {
@@ -116,12 +125,24 @@ function termFreq(tokens: string[]) {
   return tf
 }
 
-function toRecs(f: LibraryFile, stored: StoredChunks): ChunkRec[] {
-  let vecs: Float32Array | null = null
-  if (stored.vectors && stored.dims) {
-    const buf = Buffer.from(stored.vectors, 'base64')
-    vecs = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4)
+/** Splits stored vectors into one per chunk; null if absent or they don't match the chunk count. */
+function decodeVectors(sv: StoredVectors | null, n: number): Float32Array[] | null {
+  if (!sv?.vectors || !sv.dims) return null
+  const buf = Buffer.from(sv.vectors, 'base64')
+  const all = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4)
+  if (all.length !== n * sv.dims) return null
+  return Array.from({ length: n }, (_, i) => all.slice(i * sv.dims!, (i + 1) * sv.dims!))
+}
+
+async function readVectors(id: string, kind: EmbedderKind, n: number): Promise<Float32Array[] | null> {
+  try {
+    return decodeVectors(JSON.parse(await readFile(kind === 'qwen' ? qwenPath(id) : chunkPath(id), 'utf8')) as StoredVectors, n)
+  } catch {
+    return null
   }
+}
+
+function toRecs(f: LibraryFile, stored: StoredChunks, vecs: Float32Array[] | null = null): ChunkRec[] {
   return stored.chunks.map((c, i) => {
     const tokens = tokenize(`${f.name} ${c.text}`)
     return {
@@ -134,7 +155,7 @@ function toRecs(f: LibraryFile, stored: StoredChunks): ChunkRec[] {
       loc: c.loc,
       tf: termFreq(tokens),
       len: tokens.length,
-      vec: vecs && stored.dims ? vecs.slice(i * stored.dims, (i + 1) * stored.dims) : undefined
+      vec: vecs?.[i]
     }
   })
 }
@@ -144,6 +165,7 @@ function toRecs(f: LibraryFile, stored: StoredChunks): ChunkRec[] {
 export function load(): Promise<void> {
   if (loaded) return loaded
   loaded = (async () => {
+    initEmbedder()
     try {
       const meta = JSON.parse(readFileSync(metaPath(), 'utf8')) as { courses: Course[]; files: LibraryFile[]; version?: number }
       courses = meta.courses ?? []
@@ -156,7 +178,10 @@ export function load(): Promise<void> {
     for (const f of files) {
       if (f.status !== 'ready') continue
       try {
-        index.set(f.id, toRecs(f, JSON.parse(await readFile(chunkPath(f.id), 'utf8')) as StoredChunks))
+        const stored = JSON.parse(await readFile(chunkPath(f.id), 'utf8')) as StoredChunks
+        const kind = activeKind()
+        const vecs = kind === 'local' ? decodeVectors(stored, stored.chunks.length) : await readVectors(f.id, kind, stored.chunks.length)
+        index.set(f.id, toRecs(f, stored, vecs))
       } catch {
         f.status = 'error'
         f.error = 'Index missing; remove and re-add this file.'
@@ -175,8 +200,8 @@ export function load(): Promise<void> {
     for (const f of pending) f.status = 'queued'
     if (pending.length) void drain()
     // Warm the embedder if there's anything to search, then backfill any
-    // chunks that were indexed while it was unavailable.
-    if (files.length) void loadEmbedder().then((ok) => ok && backfillVectors())
+    // chunks that were indexed while it was unavailable (or by another model).
+    if (files.length) resumeEmbedding()
     changed()
   })()
   return loaded
@@ -200,28 +225,78 @@ function markBoilerplate() {
   for (const recs of index.values()) for (const r of recs) r.boilerplate = (seen.get(key(r.text))?.size ?? 0) >= 3
 }
 
+let backfillRun = 0
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Embeds, with the selected model, every passage that doesn't have a vector from it yet. */
 async function backfillVectors() {
+  const run = ++backfillRun
+  const kind = activeKind()
+  const gen = embedGeneration()
+  const stale = () => run !== backfillRun || gen !== embedGeneration()
+  if (retryTimer) clearTimeout(retryTimer)
+  retryTimer = null
   for (const f of files) {
+    if (stale()) return
     const recs = index.get(f.id)
-    if (!recs?.length || recs[0].vec) continue
+    if (!recs?.length || recs.every((r) => r.vec)) continue
     const vecs = await embed(recs.map((r) => embedText(r.text)))
-    if (!vecs) return
+    if (stale()) return
+    if (!vecs) {
+      // Offline or rate limited: try again in a minute (a rejected key waits for a new one).
+      if (kind === 'qwen' && embedderState !== 'unavailable') retryTimer = setTimeout(() => void backfillVectors(), 60_000)
+      changed()
+      return
+    }
     recs.forEach((r, i) => (r.vec = vecs[i]))
-    await persistChunks(f.id, recs)
+    await saveVectors(f.id, kind, recs)
+    changed()
   }
 }
 
-async function persistChunks(id: string, recs: ChunkRec[]) {
-  const stored: StoredChunks = { chunks: recs.map((r) => ({ text: r.text, loc: r.loc })) }
-  if (recs.length && recs.every((r) => r.vec)) {
-    const dims = recs[0].vec!.length
-    const all = new Float32Array(recs.length * dims)
-    recs.forEach((r, i) => all.set(r.vec!, i * dims))
-    stored.dims = dims
-    stored.vectors = Buffer.from(all.buffer).toString('base64')
+/** (Re)starts embedding with the selected model, e.g. at startup or after a key is saved. */
+export function resumeEmbedding() {
+  void loadEmbedder().then((ok) => {
+    changed()
+    if (ok) void backfillVectors()
+  })
+}
+
+/** Switches the semantic-search model, swapping in that model's stored vectors. */
+export async function switchEmbedder(next: EmbedderKind) {
+  await load()
+  if (!selectEmbedder(next)) return
+  backfillRun++ // abandon any backfill for the old model
+  for (const f of files) {
+    const recs = index.get(f.id)
+    if (!recs?.length) continue
+    const vecs = await readVectors(f.id, next, recs.length)
+    recs.forEach((r, i) => (r.vec = vecs?.[i]))
   }
+  changed()
+  resumeEmbedding()
+}
+
+/** Writes a freshly chunked file (no vectors) and drops vectors left from any earlier version of it. */
+async function saveChunks(id: string, recs: ChunkRec[]) {
   await mkdir(join(root(), 'chunks'), { recursive: true })
-  await writeFile(chunkPath(id), JSON.stringify(stored))
+  await writeFile(chunkPath(id), JSON.stringify({ chunks: recs.map((r) => ({ text: r.text, loc: r.loc })) } satisfies StoredChunks))
+  await rm(qwenPath(id), { force: true })
+}
+
+/** Stores one model's vectors for a file (only when every chunk has one). */
+async function saveVectors(id: string, kind: EmbedderKind, recs: ChunkRec[]) {
+  if (!recs.length || !recs.every((r) => r.vec)) return
+  const dims = recs[0].vec!.length
+  const all = new Float32Array(recs.length * dims)
+  recs.forEach((r, i) => all.set(r.vec!, i * dims))
+  const vectors = Buffer.from(all.buffer).toString('base64')
+  if (kind === 'qwen') {
+    await writeFile(qwenPath(id), JSON.stringify({ dims, vectors } satisfies StoredVectors))
+  } else {
+    const stored = JSON.parse(await readFile(chunkPath(id), 'utf8')) as StoredChunks
+    await writeFile(chunkPath(id), JSON.stringify({ ...stored, dims, vectors }))
+  }
 }
 
 // ---------------------------------------------------------------- courses
@@ -311,10 +386,12 @@ async function drain() {
         const chunks = chunk(await parseFile(filePath(f)))
         if (!chunks.length) throw new Error('No text found (scanned PDFs need OCR first).')
         const recs = toRecs(f, { chunks })
+        const kind = activeKind()
         const vecs = await embed(recs.map((r) => embedText(r.text)))
-        if (vecs) recs.forEach((r, i) => (r.vec = vecs[i]))
+        if (vecs && kind === activeKind()) recs.forEach((r, i) => (r.vec = vecs[i]))
         if (!files.includes(f)) continue // removed while indexing
-        await persistChunks(f.id, recs)
+        await saveChunks(f.id, recs)
+        await saveVectors(f.id, kind, recs)
         index.set(f.id, recs)
         markBoilerplate()
         f.status = 'ready'
@@ -340,6 +417,7 @@ export async function removeFile(id: string, notify = true) {
   index.delete(id)
   await rm(filePath(f), { force: true })
   await rm(chunkPath(id), { force: true })
+  await rm(qwenPath(id), { force: true })
   if (notify) {
     await saveMeta()
     changed()
@@ -358,16 +436,13 @@ export function storedPath(id: string): string | null {
 const K1 = 1.2
 const B = 0.75
 const RRF_K = 60
-/** bge-small cosine similarity below which a notes passage is treated as unrelated. */
-const MIN_COSINE = 0.6
 /**
- * Lecture transcripts are long, noisy and conversational; the small embedding
- * model scores filler ("ok, so, right…") as similar to almost anything. They
- * need a stronger match, count for less, and are capped, unless the question
- * is about the lectures themselves.
+ * Lecture transcripts are long, noisy and conversational; embedding models
+ * score filler ("ok, so, right…") as similar to almost anything. They need a
+ * stronger match, count for less, and are capped, unless the question is about
+ * the lectures themselves. (Per-model cosine cutoffs live in embed.ts.)
  */
 const TRANSCRIPT_WEIGHT = 0.6
-const TRANSCRIPT_MIN_COSINE = 0.7
 const DEFINITION_INTENT = /^\s*(what('?s| is| are)|define|definition|meaning of)\b/i
 const LECTURE_INTENT = /\b(lecture|lecturer|said|say|says|mention(ed)?|class|recording|exam|examinable|assessment|test|quiz|week)\b/i
 
@@ -442,9 +517,11 @@ export async function search(query: string, courseId: string, k = 6): Promise<Se
   })
 
   let cos: number[] | null = null
+  const cut = CUTOFFS[activeKind()]
   if (embedderState === 'ready' && cands.every((c) => c.vec)) {
     const q = (await embed([embedText(rest)], true))?.[0]
-    if (q) {
+    // The model may have been switched while we waited: only compare like with like.
+    if (q && cands.every((c) => c.vec?.length === q.length)) {
       cos = cands.map((c) => {
         let s = 0
         for (let i = 0; i < q.length; i++) s += q[i] * c.vec![i]
@@ -476,8 +553,8 @@ export async function search(query: string, courseId: string, k = 6): Promise<Se
       const lexical = bm25[i] > 0 && bm25[i] >= 0.3 * maxBm
       const relevant = cos
         ? c.transcript
-          ? cos[i] >= (lectureIntent ? 0.65 : TRANSCRIPT_MIN_COSINE) && lexical // must also share real terms
-          : cos[i] >= MIN_COSINE || (lexical && maxBm > 3 && bm25[i] >= 0.6 * maxBm)
+          ? cos[i] >= (lectureIntent ? cut.lecture : cut.transcript) && lexical // must also share real terms
+          : cos[i] >= cut.notes || (lexical && maxBm > 3 && bm25[i] >= 0.6 * maxBm)
         : bm25[i] > 0
       return { c, i, fused, relevant }
     })

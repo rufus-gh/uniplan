@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ClaudeUsage, ProviderStatus, ThreadSummary, UsageWindow } from '../../../shared/types'
 import { api, fmtReset, groupThreads, mod, plainTitle, PROVIDERS } from '../lib'
-import { Book, LemmaMark, Plus, ProviderLogo, Refresh, Search, Sidebar as SidebarIcon, Target, Trash } from './Icons'
+import { Book, Gear, LemmaMark, Plus, ProviderLogo, Refresh, Search, Sidebar as SidebarIcon, Target, Trash } from './Icons'
 
 interface Props {
   threads: ThreadSummary[]
@@ -20,6 +20,7 @@ interface Props {
   onDelete(id: string): void
   onToggle(): void
   onPalette(): void
+  onSettings(): void
 }
 
 function Meter({ label, w }: { label: string; w: UsageWindow }) {
@@ -195,6 +196,13 @@ export function Sidebar(p: Props) {
         )}
       </nav>
       <div className="sidebar-foot">
+        <button className="nav-item" onClick={p.onSettings} title={`Settings  ${mod},`}>
+          <Gear size={15} />
+          <span className="grow">Settings</span>
+          <span className="nav-end">
+            <kbd>{mod},</kbd>
+          </span>
+        </button>
         {!p.statuses && (
           <div className="acct">
             <span className="grow">Checking accounts…</span>

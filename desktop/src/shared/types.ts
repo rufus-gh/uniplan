@@ -158,8 +158,25 @@ export interface LibraryFile {
 export interface LibraryState {
   courses: Course[]
   files: LibraryFile[]
-  /** State of the local semantic-search model. */
+  /** State of the semantic-search model that is currently selected. */
   embedder: 'idle' | 'loading' | 'ready' | 'unavailable'
+  /** Which semantic-search model is selected. */
+  embedderKind: EmbedderKind
+  /** Passages still waiting for an embedding from the selected model. */
+  embedPending: number
+  /** Why the selected model isn't working, if it isn't (e.g. a rejected key). */
+  embedError?: string
+}
+
+export type EmbedderKind = 'local' | 'qwen'
+
+export interface AppSettings {
+  /** Which model embeds course notes for semantic search. */
+  embedder: EmbedderKind
+  /** A Hack Club AI key is saved (the key itself never reaches the UI). */
+  hasKey: boolean
+  /** The key is stored encrypted; false means it only lasts for this session. */
+  keySecure: boolean
 }
 
 export interface SearchHit extends Source {
@@ -220,6 +237,11 @@ export interface LemmaApi {
   openFile(fileId: string): Promise<void>
   search(query: string, courseId: string): Promise<SearchHit[]>
   pathForFile(file: File): string
+
+  getSettings(): Promise<AppSettings>
+  setEmbedder(kind: EmbedderKind): Promise<AppSettings>
+  /** Checks the key against Hack Club AI and saves it if it works; '' removes it. */
+  saveApiKey(key: string): Promise<{ ok: boolean; error?: string; ms?: number; settings: AppSettings }>
 
   onChatEvent(cb: (e: ChatEvent) => void): () => void
   onLibrary(cb: (s: LibraryState) => void): () => void

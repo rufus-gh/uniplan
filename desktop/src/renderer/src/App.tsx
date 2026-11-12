@@ -14,11 +14,12 @@ import { api, errorText, MODES, mod, plainTitle, playChime, PROVIDERS, providerO
 import { Sidebar } from './components/Sidebar'
 import { Composer, type ComposerHandle } from './components/Composer'
 import { AuthCard, Empty, Messages, type LiveReply } from './components/Messages'
+import { SettingsModal } from './components/SettingsModal'
 import { CommandPalette, type Command } from './components/CommandPalette'
 import { Library } from './components/Library'
 import { Practice } from './components/Practice'
 import { MemorableBackground } from './components/MemorableBackground'
-import { ArrowDown, Book, Bolt, Chat, Pencil, Target, Plus, ProviderLogo, Sidebar as SidebarIcon, Sun, Terminal, Trash } from './components/Icons'
+import { ArrowDown, Book, Bolt, Chat, Gear, Pencil, Target, Plus, ProviderLogo, Sidebar as SidebarIcon, Sun, Terminal, Trash } from './components/Icons'
 
 type ThemePref = 'system' | 'dark' | 'light'
 interface Defaults {
@@ -60,10 +61,11 @@ export function App() {
   const [live, setLive] = useState<Record<string, LiveReply>>({})
   const [statuses, setStatuses] = useState<ProviderStatus[] | null>(null)
   const [models, setModels] = useState<ModelOption[]>([])
-  const [lib, setLib] = useState<LibraryState>({ courses: [], files: [], embedder: 'idle' })
+  const [lib, setLib] = useState<LibraryState>({ courses: [], files: [], embedder: 'idle', embedderKind: 'local', embedPending: 0 })
   const [view, setView] = useState<'chat' | 'library' | 'practice'>('chat')
   const [libCourse, setLibCourse] = useState<string | null>(null)
   const [palette, setPalette] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => loadScalar('sidebarCollapsed', false))
   const [theme, setTheme] = useState<ThemePref>(() => loadScalar('theme', 'system'))
   const [defaults, setDefaults] = useState<Defaults>(() => {
@@ -429,6 +431,7 @@ export function App() {
         else if (a === 'sidebar') setCollapsed((v) => !v)
         else if (a === 'library') setView((v) => (v === 'library' ? 'chat' : 'library'))
         else if (a === 'practice') setView((v) => (v === 'practice' ? 'chat' : 'practice'))
+        else if (a === 'settings') setSettingsOpen(true)
       }),
     [newChat]
   )
@@ -467,6 +470,7 @@ export function App() {
   const commands = useMemo<Command[]>(() => {
     const cmds: Command[] = [
       { id: 'new', section: 'Actions', label: 'New chat', icon: <Plus />, hint: <kbd>{mod}N</kbd>, run: newChat },
+      { id: 'settings', section: 'Actions', label: 'Settings', icon: <Gear />, hint: <kbd>{mod},</kbd>, keywords: 'preferences notes search embeddings qwen local model api key', run: () => setSettingsOpen(true) },
       { id: 'practice', section: 'Actions', label: 'Practice questions', icon: <Target />, hint: <kbd>{mod}P</kbd>, keywords: 'exam quiz test mark revise', run: openPractice },
       { id: 'library', section: 'Actions', label: 'Open library', icon: <Book />, hint: <kbd>{mod}L</kbd>, keywords: 'notes transcripts upload', run: openLibrary },
       {
@@ -568,6 +572,7 @@ export function App() {
         onDelete={remove}
         onToggle={() => setCollapsed((v) => !v)}
         onPalette={() => setPalette(true)}
+        onSettings={() => setSettingsOpen(true)}
       />
       <main className="main">
         <MemorableBackground active={!hasMessages && view === 'chat' && !needsAuth} />
@@ -697,6 +702,7 @@ export function App() {
       )}
 
       {palette && <CommandPalette commands={commands} onClose={() => setPalette(false)} />}
+      {settingsOpen && <SettingsModal lib={lib} onClose={() => setSettingsOpen(false)} />}
       {toast && (
         <div className="toast">
           {toast.text}
