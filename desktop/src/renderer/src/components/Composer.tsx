@@ -64,6 +64,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
   const [text, setText] = useState('')
   const [images, setImages] = useState<ImageAttachment[]>([])
   const [dragging, setDragging] = useState(false)
+  const [modelExpanded, setModelExpanded] = useState(false)
   const ta = useRef<HTMLTextAreaElement>(null)
   const file = useRef<HTMLInputElement>(null)
 
@@ -193,6 +194,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
                 const st = status(prov)
                 const list = p.models.filter((m) => m.provider === prov)
                 if (!list.length && !st?.canLogin) return null
+                const visible = modelExpanded ? list : list.slice(0, 3)
+                const hidden = list.length - visible.length
                 return (
                   <div key={prov} className="menu-group">
                     <div className="menu-head">
@@ -217,7 +220,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
                         <span className="menu-plan">Unavailable</span>
                       )}
                     </div>
-                    {list.map((m) => (
+                    {visible.map((m) => (
                       <button
                         key={m.id}
                         className={`menu-item ${st && !st.ok ? 'dim' : ''}`}
@@ -234,6 +237,27 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(p, r
                         {p.model === m.id && <Check className="check" />}
                       </button>
                     ))}
+                    {hidden > 0 && (
+                      <div className="menu-item-group">
+                        {modelExpanded ? (
+                          <button
+                            className="menu-item more"
+                            onClick={() => setModelExpanded(false)}
+                            title={`Hide ${hidden} more models`}
+                          >
+                            Show less
+                          </button>
+                        ) : (
+                          <button
+                            className="menu-item more"
+                            onClick={() => setModelExpanded(true)}
+                            title={`Show ${hidden} more models`}
+                          >
+                            Show {hidden} more
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })
